@@ -43,12 +43,14 @@ const OSRS=[0,0];{let points=0;for(let l=1;l<99;l++){points+=Math.floor(l+300*2*
 export const osrsXp=level=>OSRS[Math.max(1,Math.min(99,level))];
 export const xpAtLevel=level=>level<=1?0:Math.max(Math.round(osrsXp(level)/XP_SCALE),Math.round(FLOOR_XP*(Math.min(99,level)-1)**FLOOR_POWER));
 export function levelFor(xp){let level=1;while(level<99&&xp>=xpAtLevel(level+1))level++;return level;}
-export const dishXp=level=>Math.round((30+2.2*level)/5)*5;      // level 1: 30, level 25: 85, level 50: 140, level 99: 250
+// XP comes from the meal, not the dish: every breakfast is worth the same, every lunch, every dinner. Dinner is the
+// meal that replaces a takeaway, so it is worth the most. Three meals a day earn XP.
+export const MEALS=[{key:'breakfast',label:'Breakfast',xp:50},{key:'lunch',label:'Lunch',xp:70},{key:'dinner',label:'Dinner',xp:100}];
+export const mealXp=meal=>(MEALS.find(m=>m.key===meal)||MEALS[2]).xp;
+export const mealFor=(hour=new Date().getHours())=>hour<11?'breakfast':hour<16?'lunch':'dinner';   // the likely meal by time of day
 export const DAILY_CAP=3;                                          // meals a day that earn XP
 // Rested: from the third cooking day in a row, meals earn half again. One day off is forgiven; two end the streak.
 export const RESTED_BONUS=0.5,RESTED_FROM=3,GRACE_DAYS=1;
-// How much effort a dish of your own takes sets its XP. Levels are internal; the book never shows them.
-export const TIERS=[{label:'Quick',level:5},{label:'Everyday',level:20},{label:'Involved',level:40},{label:'A project',level:65},{label:'A showpiece',level:85}];
 
 // ---------- the book ----------
 const norm=name=>String(name||'').trim().replace(/\s+/g,' ');
@@ -58,7 +60,7 @@ export function catalogue(state){
   const cooked={};for(const e of state.events)if(e.type==='cooked')cooked[key(e.dish)]=(cooked[key(e.dish)]||0)+1;
   const own=new Set(state.dishes.map(d=>key(d.name)));
   return [...DISHES.filter(d=>!own.has(key(d.name))).map(d=>({...d,custom:false})),...state.dishes.map(d=>({name:d.name,level:d.level,minutes:d.minutes??null,category:d.category||'feast',ingredients:d.ingredients||[],custom:true}))]
-    .map(d=>({...d,xp:dishXp(d.level),cooked:cooked[key(d.name)]||0})).sort((a,b)=>a.level-b.level||a.name.localeCompare(b.name));
+    .map(d=>({...d,cooked:cooked[key(d.name)]||0})).sort((a,b)=>a.level-b.level||a.name.localeCompare(b.name));
 }
 export const findDish=(state,name)=>catalogue(state).find(d=>key(d.name)===key(name))||null;
 // Your book: every dish you have cooked, most cooked first. Nothing is locked; cooking a dish writes it in.
@@ -73,7 +75,7 @@ export function searchDishes(state,query,limit=8){
   const match=d=>!q||key(d.name).includes(q);
   return [...mine.filter(match).map(d=>({...d,inBook:true})),...ideas.filter(match).map(d=>({...d,inBook:false}))].slice(0,limit);
 }
-export function saveRecipe(state,{name,level,category,minutes,ingredients},original=null){
+export function saveRecipe(state,{name,level=20,category='feast',minutes,ingredients},original=null){
   const clean=norm(name).slice(0,60);if(!clean)throw new Error('Give the recipe a name.');
   if(!Number.isInteger(level)||level<1||level>99)throw new Error('Pick a level from 1 to 99.');
   if(!CATEGORIES.some(c=>c.key===category))throw new Error('Pick a category.');
@@ -110,10 +112,11 @@ function checkDate(state,date,today){
   if(!validDate(date)||date>today)throw new Error('Choose today or a past date.');
   if(state.baseline&&date<state.baseline.since)throw new Error(`Choose a date since you started, ${state.baseline.since}.`);
 }
-export function logCooked(state,{dish,date,tempted=false},{now=Date.now(),today=dayKey()}={}){
+export function logCooked(state,{dish,date,meal='dinner',tempted=false},{now=Date.now(),today=dayKey()}={}){
   date=date||today;checkDate(state,date,today);
   const known=findDish(state,dish);if(!known)throw new Error('Add that recipe to your book first.');
-  const event={id:newId(),type:'cooked',date,dish:known.name,level:known.level,xp:dishXp(known.level),tempted:Boolean(tempted),createdAt:now};
+  if(!MEALS.some(m=>m.key===meal))throw new Error('Choose breakfast, lunch or dinner.');
+  const event={id:newId(),type:'cooked',date,dish:known.name,meal,tempted:Boolean(tempted),createdAt:now};
   return {state:{...state,events:[...state.events,event]},event};
 }
 export const plannedUsed=(state,start)=>state.events.some(e=>e.type==='ordered'&&e.planned&&weekStart(e.date)===start);
@@ -182,6 +185,19 @@ export function weeks(state,today=dayKey(),count=8){
   return list;
 }
 
+// ---------- the month, day by day, for the calendar picture ----------
+// Each day of the month in a Monday-first grid: its meals cooked and takeaways, whether it is today or still ahead.
+export function monthDays(state,month,today=dayKey()){
+  const days=[],first=`${month}-01`,offset=(new Date(dayNumber(first)*86400000).getUTCDay()+6)%7;
+  for(let d=1;d<=daysInMonth(month);d++){
+    const date=`${month}-${String(d).padStart(2,'0')}`,i=offset+d-1;
+    const meals=state.events.filter(e=>e.type==='cooked'&&e.date===date).sort((a,b)=>MEALS.findIndex(m=>m.key===a.meal)-MEALS.findIndex(m=>m.key===b.meal)||a.createdAt-b.createdAt);
+    const orders=state.events.filter(e=>e.type==='ordered'&&e.date===date).sort((a,b)=>a.createdAt-b.createdAt);
+    days.push({date,day:d,col:i%7,row:Math.floor(i/7),meals,orders,isToday:date===today,ahead:date>today});
+  }
+  return {month,rows:Math.floor((offset+daysInMonth(month)-1)/7)+1,days};
+}
+
 // ---------- everything the window shows ----------
 const byTime=(a,b)=>a.date.localeCompare(b.date)||a.createdAt-b.createdAt||a.id.localeCompare(b.id);
 export function summary(state,today=dayKey()){
@@ -193,7 +209,7 @@ export function summary(state,today=dayKey()){
     if(e.type==='groceries'){groceriesTotal+=e.amount;continue;}
     cookedTotal++;if(e.tempted)resisted++;perDay[e.date]=(perDay[e.date]||0)+1;if(perDay[e.date]>DAILY_CAP)continue;
     if(e.date!==lastDay){streak=lastDay&&daysBetween(lastDay,e.date)<=GRACE_DAYS+1?streak+1:1;lastDay=e.date;}
-    const bonus=streak>=RESTED_FROM?Math.round(e.xp*RESTED_BONUS):0;gains.set(e.id,{base:e.xp,rested:bonus});counted.add(e.id);xp+=e.xp+bonus;
+    const base=mealXp(e.meal),bonus=streak>=RESTED_FROM?Math.round(base*RESTED_BONUS):0;gains.set(e.id,{base,rested:bonus});counted.add(e.id);xp+=base+bonus;
   }
   const alive=lastDay!==null&&daysBetween(lastDay,today)<=GRACE_DAYS+1;
   const streakNow=alive?streak:0,nextStreak=!alive?1:lastDay===today?streak:streak+1;
@@ -217,7 +233,7 @@ export function validateState(raw){
   const ids=new Set();
   for(const e of raw.events){
     if(!text(e.id,80)||ids.has(e.id)||!validDate(e.date)||!Number.isSafeInteger(e.createdAt)||e.createdAt<0)throw new Error('Invalid entry in backup.');
-    if(e.type==='cooked'){if(!text(e.dish,60)||!Number.isInteger(e.level)||e.level<1||e.level>99||!Number.isInteger(e.xp)||e.xp<0||e.xp>1000)throw new Error('Invalid meal in backup.');}
+    if(e.type==='cooked'){if(!text(e.dish,60)||(e.meal!==undefined&&!MEALS.some(m=>m.key===e.meal)))throw new Error('Invalid meal in backup.');}
     else if(e.type==='ordered'){if(!money(e.amount)||!text(e.note??'',60))throw new Error('Invalid order in backup.');}
     else if(e.type==='groceries'){if(!money(e.amount)||!text(e.note??'',60)||!Number.isInteger(e.days)||e.days<1||e.days>31)throw new Error('Invalid grocery shop in backup.');}
     else throw new Error('Invalid entry in backup.');
@@ -236,7 +252,7 @@ export function validateState(raw){
   const picks=raw.picks&&typeof raw.picks==='object'?raw.picks:{week:'',dishes:[]};
   if(!(picks.week===''||validDate(picks.week))||!Array.isArray(picks.dishes)||picks.dishes.length>MAX_PICKS||!picks.dishes.every(x=>text(x,60)))throw new Error('Invalid week plan in backup.');
   return {version:2,currency:CURRENCIES.includes(raw.currency)?raw.currency:'EUR',baseline:b?{monthly:b.monthly,orders:b.orders,since:b.since,groceries:b.groceries||0}:null,
-    events:raw.events.map(e=>e.type==='cooked'?{id:e.id,type:'cooked',date:e.date,dish:e.dish,level:e.level,xp:e.xp,tempted:e.tempted===true,createdAt:e.createdAt}
+    events:raw.events.map(e=>e.type==='cooked'?{id:e.id,type:'cooked',date:e.date,dish:e.dish,meal:e.meal||'dinner',tempted:e.tempted===true,createdAt:e.createdAt}   // older meals become dinners
       :e.type==='groceries'?{id:e.id,type:'groceries',date:e.date,amount:e.amount,note:e.note||'',days:e.days,createdAt:e.createdAt}
       :{id:e.id,type:'ordered',date:e.date,amount:e.amount,note:e.note||'',planned:e.planned===true,createdAt:e.createdAt}),
     dishes,pantry:[...new Set(pantry.map(key))].sort(),picks:{week:picks.week,dishes:[...picks.dishes]}};

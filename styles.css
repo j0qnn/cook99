@@ -1,8 +1,8 @@
 @font-face{font-family:Geist;src:url('./assets/Geist.ttf') format('truetype');font-weight:100 900;font-display:swap}
 @font-face{font-family:Instrument;src:url('./assets/InstrumentSerif-Regular.ttf') format('truetype');font-display:swap}
-:root{color-scheme:light dark;--bg:#f5f4f0;--surface:#ffffff;--ink:#161614;--soft:#4a4944;--muted:#8d8b84;--line:#e3e1db;--track:#e6e4de;--accent:#e4572e;
+:root{color-scheme:light dark;--home:#24946b;--out:#e4572e;--tile:#e7e5df;--bg:#f5f4f0;--surface:#ffffff;--ink:#161614;--soft:#4a4944;--muted:#8d8b84;--line:#e3e1db;--track:#e6e4de;--accent:#e4572e;
   --sans:Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;--serif:Instrument,'Iowan Old Style',Georgia,serif}
-@media(prefers-color-scheme:dark){:root{--bg:#121211;--surface:#1b1b19;--ink:#f1efe9;--soft:#c4c1b9;--muted:#85827b;--line:#2a2a27;--track:#262624;--accent:#f06a40}}
+@media(prefers-color-scheme:dark){:root{--home:#28a87c;--out:#e4572e;--tile:#22221f;--bg:#121211;--surface:#1b1b19;--ink:#f1efe9;--soft:#c4c1b9;--muted:#85827b;--line:#2a2a27;--track:#262624;--accent:#f06a40}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 var(--sans);letter-spacing:-.005em;-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
@@ -17,14 +17,14 @@ button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
 .purse{margin-left:auto;padding:0 0 6px;background:none;border:0;text-align:right;cursor:pointer}.purse #purseAmount{display:block;font:400 40px/1 var(--serif);letter-spacing:-.02em}.purse.is-negative #purseAmount{color:var(--accent)}
 /* Ink normally; the accent while a cooking streak is on. The colour is the only sign of it. */
 .bar{height:2px;margin-top:26px;background:var(--track);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--ink);transition:width .8s cubic-bezier(.2,.7,.2,1),background .6s ease}
-.bar.is-rested i{background:var(--accent)}
+.bar.is-rested i{background:var(--home)}
 .tabs{display:flex;gap:22px;margin-top:44px;border-bottom:1px solid var(--line)}
 .tab{position:relative;padding:0 0 12px;background:none;border:0;color:var(--muted);font-size:15px;cursor:pointer}.tab.is-on{color:var(--ink)}.tab.is-on::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1.5px;background:var(--ink)}
 /* The list: plain rows, generous spacing; the chosen dish opens in place. */
 .list{margin-top:6px}
 .item{border-bottom:1px solid var(--line)}
 .row{display:flex;align-items:baseline;gap:12px;width:100%;padding:17px 0;background:none;border:0;text-align:left;cursor:pointer;font-size:17px}
-.row .name{flex:1;font-weight:450}.row .meta{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}.row .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);align-self:center}
+.row .name{flex:1;font-weight:450}.row .meta{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}.row .dot{width:6px;height:6px;border-radius:50%;background:var(--home);align-self:center}
 .open{padding:0 0 20px;animation:open .25s ease}@keyframes open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 .facts{margin:0;color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
 .ings{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 18px}
@@ -84,7 +84,6 @@ input:focus,select:focus{outline:2px solid var(--ink);outline-offset:-1px}
 .ding-inner{position:relative}
 /* The dialogue, the way an old MMO's chat box gives way to it: skill icon left, two lines, a blue line to continue. */
 .ding-dialog{display:flex;gap:16px;align-items:center;max-width:380px;margin:0 auto;text-align:left;animation:rise .6s ease 1.05s both}
-.slot.lg{width:56px;height:56px;border-radius:7px}.slot.lg::after{border-radius:7px}
 .ding-title{margin:0;font-size:16px;font-weight:500;line-height:1.35}.ding-sub{margin:3px 0 0;font-size:16px;color:var(--soft)}
 .ding-note{margin:6px 0 0;font:400 19px/1.2 var(--serif)}.ding-note:empty{display:none}
 .ding-continue{margin:10px 0 0;color:#2b44d9;font-size:15px;font-weight:500;animation:blink 1.6s ease-in-out 2.4s infinite}
@@ -95,18 +94,27 @@ input:focus,select:focus{outline:2px solid var(--ink);outline-offset:-1px}
 .bar.is-full i{width:100%!important;transition:width .45s cubic-bezier(.4,0,.2,1)}
 @media(prefers-reduced-motion:reduce){.ding-num .old{display:none}.ding-num .new,.ding-line i,.ding-dialog,.ding-continue{animation:none}.ding-fx{display:none}}
 
-/* Category icons as inventory slots: full colour, a hard dark edge, a faint bevel and a vignette, like a classic MMO bag. */
-.slot{position:relative;flex:none;width:38px;height:38px;border-radius:5px;overflow:hidden;background:#000;box-shadow:0 0 0 1px #0b0b0a,0 1px 3px #0003;align-self:center}
-.slot svg{display:block;width:100%;height:100%}
-.slot::after{content:'';position:absolute;inset:0;border-radius:5px;box-shadow:inset 0 0 0 1px #ffffff2e,inset 0 1px 0 #ffffff40,inset 0 0 10px #000a;pointer-events:none}
-.slot.sm{width:32px;height:32px;border-radius:4px}.slot.sm::after{border-radius:4px}
-.row{align-items:center}.row .name{line-height:1.25}
-.result{align-items:center}
-.rows .line .slot{margin-right:2px}
-@media(prefers-color-scheme:dark){.slot{box-shadow:0 0 0 1px #000,0 0 0 2px #2c2b28}}
-#previewDing{display:block;margin-top:14px;font-size:14px}
 
 /* Two-way switch in the Spent sheet: takeaway or groceries. */
 .seg{display:flex;gap:4px;margin-top:14px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:99px}
 .seg button{flex:1;padding:9px 0;background:none;border:0;border-radius:99px;color:var(--muted);font-size:15px;font-weight:500;cursor:pointer}.seg button.is-on{background:var(--ink);color:var(--bg)}
 .hint{display:block;margin-top:6px;font-size:13px;color:var(--muted)}#logShop{margin-top:18px}
+
+/* No icons: the level-up dialogue is centred text; the meal switch sits above the day. */
+.ding-dialog{justify-content:center;text-align:center}#mealSeg{margin-top:18px}
+
+/* ---- Charts. Colours validated for colour-blind separation in both modes: --home (cooked, groceries), --out (takeaway). ---- */
+.month{margin-top:40px}.month-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.chart{position:relative;margin-top:12px}.chart svg{display:block;width:100%;height:auto;overflow:visible;-webkit-tap-highlight-color:transparent}
+.blocks svg{cursor:grab}.blocks svg:active{cursor:grabbing}
+.tile{fill:var(--tile)}.is-ahead .tile{fill:none;stroke:var(--line);stroke-width:1}.is-today .tile{fill:var(--tile);stroke:var(--ink);stroke-width:1.4}
+.f-home{fill:var(--home)}.t-home{fill:color-mix(in oklab,var(--home) 68%,#fff)}.r-home{fill:color-mix(in oklab,var(--home) 72%,#000)}
+.f-out{fill:var(--out)}.t-out{fill:color-mix(in oklab,var(--out) 68%,#fff)}.r-out{fill:color-mix(in oklab,var(--out) 72%,#000)}
+.cell.is-picked .tile{stroke:var(--ink);stroke-width:1.4}.cell.is-picked polygon:not(.tile){filter:brightness(1.08)}
+.chart-tip{position:absolute;z-index:3;display:flex;flex-direction:column;gap:2px;padding:9px 12px;background:var(--ink);color:var(--bg);border-radius:12px;font-size:13px;line-height:1.35;white-space:nowrap;pointer-events:none;box-shadow:0 8px 24px #0003;animation:tip .18s ease}
+.chart-tip strong{font-weight:600}@keyframes tip{from{opacity:0;transform:translateY(4px)}}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;margin-top:12px;font-size:13px;color:var(--soft)}.legend .hint{color:var(--muted)}
+.key{display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:2px;vertical-align:-1px}.key.home{background:var(--home)}.key.out{background:var(--out)}.key.track{box-shadow:inset 0 0 0 1.2px var(--muted)}
+.meter{margin-top:18px}.track polygon,.track rect{fill:none;stroke:var(--muted);stroke-width:1;stroke-linejoin:round}
+.axis{display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--muted)}
+@media(prefers-reduced-motion:reduce){.chart-tip{animation:none}}

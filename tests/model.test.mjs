@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState,cents,setBaseline,logCooked,logOrdered,removeEvent,monthReport,trackedDays,summary,xpInfo,xpAtLevel,osrsXp,levelFor,dishXp,catalogue,findDish,book,searchDishes,TIERS,saveRecipe,setHave,hasIngredient,isReady,togglePick,clearPicks,picksFor,shoppingList,weekStart,addDays,weekReport,weeks,plannedUsed,validateState,load,persist,KEY,daysInMonth,DAILY_CAP,MAX_PICKS,reagentKind} from '../model.js';
+import {initialState,cents,setBaseline,logCooked,logOrdered,removeEvent,monthReport,trackedDays,summary,xpInfo,xpAtLevel,osrsXp,levelFor,MEALS,mealXp,mealFor,catalogue,findDish,book,searchDishes,saveRecipe,setHave,hasIngredient,isReady,togglePick,clearPicks,picksFor,shoppingList,weekStart,addDays,weekReport,weeks,plannedUsed,validateState,load,persist,KEY,daysInMonth,DAILY_CAP,MAX_PICKS,reagentKind} from '../model.js';
 import {DISHES,CATEGORIES} from '../dishes.js';
 const started=(since='2026-09-17')=>setBaseline(initialState(),{monthly:'247.00',orders:11,since});
 const T='2026-09-30';
@@ -14,7 +14,8 @@ test('the curve: a floor for the early levels, then the OSRS table, scaled; 92 i
   assert.equal(xpAtLevel(81),Math.round(150*80**1.3));assert.equal(xpAtLevel(82),Math.round(osrsXp(82)/50));   // where the floor hands over
   for(let l=2;l<=99;l++)assert.ok(xpAtLevel(l)>xpAtLevel(l-1));
   assert.equal(levelFor(0),1);assert.equal(levelFor(260689),99);assert.equal(levelFor(260688),98);
-  assert.equal(dishXp(1),30);assert.equal(dishXp(25),85);assert.equal(dishXp(99),250);
+  assert.deepEqual(MEALS.map(m=>[m.key,m.xp]),[['breakfast',50],['lunch',70],['dinner',100]]);assert.equal(mealXp('lunch'),70);assert.equal(mealXp('nonsense'),100);
+  assert.equal(mealFor(7),'breakfast');assert.equal(mealFor(12),'lunch');assert.equal(mealFor(19),'dinner');
 });
 test('the recipe book: 91 dishes, every one with a category and main ingredients, and reagents get an icon',()=>{
   assert.equal(DISHES.length,91);assert.equal(new Set(DISHES.map(d=>d.name.toLowerCase())).size,91);
@@ -28,27 +29,29 @@ test('the book holds only what you have cooked; any dish can be cooked, and your
   const found=searchDishes(s,'risot');assert.equal(found[0].name,'Risotto');assert.ok(found[0].inBook);assert.ok(found.slice(1).every(d=>!d.inBook));
   assert.equal(searchDishes(s,'').length,8);assert.equal(searchDishes(s,'').filter(d=>d.inBook).length,2);
   assert.throws(()=>cook(s,"Gran's stew"));                                    // a new dish is written down first
-  s=saveRecipe(s,{name:"Gran's stew",level:TIERS[2].level,category:'soup',minutes:'90',ingredients:'Beef, carrots, Beef'});
+  s=saveRecipe(s,{name:"Gran's stew",minutes:'90',ingredients:'Beef, carrots, Beef'});
   assert.equal(book(s).length,2);s=cook(s,"gran's stew",{date:'2026-09-23'},4);
-  const gran=findDish(s,"Gran's stew");assert.ok(gran.custom);assert.deepEqual(gran.ingredients,['beef','carrots']);assert.equal(gran.minutes,90);assert.equal(gran.xp,dishXp(40));
+  const gran=findDish(s,"Gran's stew");assert.ok(gran.custom);assert.deepEqual(gran.ingredients,['beef','carrots']);assert.equal(gran.minutes,90);
   assert.equal(book(s)[0].name,'Porridge');assert.equal(book(s).length,3);
   assert.throws(()=>saveRecipe(s,{name:"Gran's Stew",level:20,category:'soup'}));assert.throws(()=>saveRecipe(s,{name:'X',level:10,category:'nope'}));
   s=saveRecipe(s,{name:'Risotto',level:35,category:'grains',ingredients:'arborio rice, stock, peas'},'Risotto');   // edit a catalogue dish: your version wins
   assert.deepEqual(findDish(s,'Risotto').ingredients,['arborio rice','stock','peas']);assert.equal(catalogue(s).filter(d=>d.name==='Risotto').length,1);
 });
-test('three meals a day earn XP; from the third cooking day in a row they earn half again',()=>{
-  let s=started();for(let i=1;i<=4;i++)s=cook(s,'Porridge',{date:'2026-09-20'},i);
-  let sum=summary(s,T);assert.equal(sum.xp,90);assert.equal(sum.counted.size,DAILY_CAP);
-  s=cook(s,'Porridge',{date:'2026-09-21'},5);s=cook(s,'Carbonara',{date:'2026-09-22'},6);   // day 3: rested
-  sum=summary(s,'2026-09-22');assert.equal(sum.xp,90+30+85+43);assert.equal(sum.streak,3);assert.ok(sum.rested);
-  assert.equal([...sum.gains.values()].at(-1).rested,43);
+test('XP comes from the meal: every breakfast, lunch and dinner is worth the same, whatever the dish; three a day count',()=>{
+  let s=started();for(let i=1;i<=4;i++)s=cook(s,i===1?'Porridge':'Beef wellington',{date:'2026-09-20',meal:'breakfast'},i);
+  let sum=summary(s,T);assert.equal(sum.xp,150);assert.equal(sum.counted.size,DAILY_CAP);   // a showpiece breakfast earns what porridge does
+  s=cook(s,'Porridge',{date:'2026-09-21',meal:'lunch'},5);s=cook(s,'Carbonara',{date:'2026-09-22'},6);   // dinner by default; day 3 of the streak
+  sum=summary(s,'2026-09-22');assert.equal(sum.xp,150+70+150);assert.equal(sum.streak,3);assert.ok(sum.rested);assert.equal([...sum.gains.values()].at(-1).rested,50);
+  assert.throws(()=>cook(s,'Dal',{meal:'brunch'}));
 });
 test('the streak forgives one day off; two days off end it, and nothing earned is lost',()=>{
-  let s=started();s=cook(s,'Porridge',{date:'2026-09-20'},1);s=cook(s,'Porridge',{date:'2026-09-22'},2);s=cook(s,'Porridge',{date:'2026-09-24'},3);
-  let sum=summary(s,'2026-09-24');assert.equal(sum.streak,3);assert.equal(sum.xp,30+30+45);
+  let s=started();for(const [d,i] of [['2026-09-20',1],['2026-09-22',2],['2026-09-24',3]])s=cook(s,'Porridge',{date:d,meal:'breakfast'},i);
+  let sum=summary(s,'2026-09-24');assert.equal(sum.streak,3);assert.equal(sum.xp,50+50+75);
   assert.ok(summary(s,'2026-09-26').rested);assert.equal(summary(s,'2026-09-27').streak,0);assert.ok(!summary(s,'2026-09-27').rested);
-  s=cook(s,'Porridge',{date:'2026-09-27'},4);sum=summary(s,'2026-09-27');assert.equal(sum.streak,1);assert.equal(sum.xp,30+30+45+30);
+  s=cook(s,'Porridge',{date:'2026-09-27',meal:'breakfast'},4);sum=summary(s,'2026-09-27');assert.equal(sum.streak,1);assert.equal(sum.xp,50+50+75+50);
   const fresh=summary(started(),T);assert.ok(!fresh.rested);assert.equal(fresh.streak,0);
+  const old=validateState({...started(),events:[{id:'x',type:'cooked',date:'2026-09-20',dish:'Dal',level:17,xp:65,tempted:false,createdAt:1}]});
+  assert.equal(old.events[0].meal,'dinner');assert.equal(summary(old,T).xp,100);   // older meals become dinners
 });
 test('reagents: tick what is in, a recipe is ready when all of it is, and the week builds a shopping list',()=>{
   let s=started();const omelette=findDish(s,'Omelette');assert.deepEqual(omelette.ingredients,['eggs','cheddar','butter']);
@@ -109,4 +112,16 @@ test('grocery shops survive a backup and bad ones are refused',()=>{
   const data=new Map(),storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};persist(s,storage);assert.deepEqual(load(storage),s);
   const bad=structuredClone(s);bad.events[0].days=0;assert.throws(()=>validateState(bad));
   const neg=structuredClone(s);neg.baseline.groceries=-5;assert.throws(()=>validateState(neg));
+});
+
+import {monthDays} from '../model.js';
+test('the month picture: a Monday-first grid with each day\u2019s meals in meal order and its takeaways',()=>{
+  let s=started('2026-10-01');s=cook(s,'Dal',{date:'2026-10-07',meal:'dinner',today:'2026-10-26'},1);s=cook(s,'Porridge',{date:'2026-10-07',meal:'breakfast',today:'2026-10-26'},2);
+  s=order(s,'22',{date:'2026-10-07',today:'2026-10-26'},3);
+  const m=monthDays(s,'2026-10','2026-10-26');assert.equal(m.days.length,31);
+  assert.deepEqual([m.days[0].col,m.days[0].row],[3,0]);   // 1 October 2026 is a Thursday
+  assert.deepEqual([m.days[30].col,m.days[30].row],[5,4]);assert.equal(m.rows,5);
+  const d7=m.days[6];assert.deepEqual(d7.meals.map(e=>e.meal),['breakfast','dinner']);assert.equal(d7.orders.length,1);
+  assert.ok(m.days[25].isToday);assert.ok(m.days[26].ahead&&!m.days[24].ahead);
+  assert.equal(monthDays(s,'2026-02','2026-10-26').rows,5);   // February 2026 starts on a Sunday, so it spills into a fifth row
 });

@@ -8,7 +8,7 @@ browser. `npm start` serves it on http://localhost:4175, `npm run share` on the 
 History: the pixel savings app (`../cook99-savings`) guessed the money; the clean app (`../archive/cook99-clean`)
 measured it. This version (2026-10-02) keeps the measured money and the data format and puts it in the cooking ## The page
 
-Typography and space carry it, with one exception: each dish shows its category icon in an inventory slot. Geist for the interface, Instrument Serif for
+Typography and space carry it: no icons, textures or cards. Geist for the interface, Instrument Serif for
 the two big numbers, warm off-white (dark at night, following the system) and one tomato accent.
 
 - **Top.** *Cook99*, then *Week* (with the number of planned dinners) and *Ledger*.
@@ -26,24 +26,18 @@ the two big numbers, warm off-white (dark at night, following the system) and on
 ## The rules
 
 - **No unlocking, no recipe levels.** Every dish is open from the start. Cooking one writes it into the book.
-- **XP.** Fixed per dish from its effort, 30 to 250 (`dishXp`); catalogue dishes carry their own. Three meals a day
-  earn XP. The level table is the real OSRS one divided by 50, with a floor under it so early levels cost real
-  cooking (`FLOOR_XP` × (level − 1)^1.3): level 2 at 150 XP (two or three meals), 10 at 2,610 (about 35 meals), 30 at
-  11,946 (about 160). The floor hands over to the OSRS table at level 82; 92 is still half way and 99 is 260,689 XP.
-- **Level-up.** Borrowed from the OSRS skill-up: the progress line runs to the end while the page holds the old
-  number, then the page clears to one large numeral rolling from the old level to the new, with fireworks: rockets
-  streak up from below and burst over the top half into big square sparks, two of ten bright colours per burst plus
-  white glints, each spark trailing, with a small crackle ring after; they fall and twinkle out (seven volleys, twelve
-  at milestones and 99). A
-  tomato line draws under the number, then the dialogue in Cook99's own voice: the pot icon in its slot, a short line
-  that rotates by level ("Well cooked.", "Earned at the stove.", "Another level, no delivery fee." and eight more),
-  "Cooking 12 · 341 xp to 13" and a blue "Tap to carry on" ("Up 3 levels in one go." for a jump; at 99, "Cooking 99.
-  Nothing left to learn but new dishes."). No wording is taken from any game. Milestones (10, 25, 50, 75, 92) add a line of their own. An 8-bit jingle, synthesised the way an old
-  console sound chip made music: two pulse channels at 12.5% and 25% duty (lead and harmony), the held chord as a fast
-  arpeggio, a triangle bass, LFSR-style noise for hats, snare and crash, stepped 60 Hz volume envelopes; about 2.2 s,
-  with a second higher phrase at 99. The motif is original; no melody is copied from any game, and a short
-  vibration where the phone allows it. Sound can be switched off in Settings, which also has *Preview the level-up*
-  (plays it from your level to the next without touching the record).
+- **XP.** Comes from the meal, not the dish: every breakfast earns 50, every lunch 70, every dinner 100 (`MEALS`),
+  whatever was cooked, so nothing pushes you toward fancy dishes. Dinner is worth most because it is the meal that
+  replaces a takeaway. Up to three meals a day earn XP. The cook sheet has a Breakfast / Lunch / Dinner switch that
+  defaults by time of day; *Cook again* uses the time of day. Older records' meals count as dinners. The level table
+  is the real OSRS one divided by 50, with a floor under it so early levels cost real cooking
+  (`FLOOR_XP` × (level − 1)^1.3): level 2 at 150 XP (two meals), 10 at 2,610, 30 at 11,946. The floor hands over to
+  the OSRS table at level 82; 92 is still half way and 99 is 260,689 XP.
+- **Level-up.** Borrowed from the OSRS skill-up, silently: the progress line runs to the end while the page holds the
+  old number, then the page clears to one large numeral rolling from the old level to the new, with fireworks, a
+  tomato line drawn under it, and a short line in Cook99's own voice ("Well cooked.", "Another level, no delivery
+  fee." and others), "Cooking 12 · 341 xp to 13" and a blue "Tap to carry on". Milestones at 10, 25, 50, 75 and 92
+  add a line of their own. No sound; a short haptic on iPhone. Settings has *Preview the level-up*.
 - **Streak.** From the third cooking day in a row meals earn half again; one day off is forgiven, two end it.
   Shown only as the bar's colour, and folded into the XP number of each meal.
 - **Ingredients and the week.** Up to seven dinners planned for the week (cleared on Monday). This week shows the
@@ -60,12 +54,26 @@ the two big numbers, warm off-white (dark at night, following the system) and on
 
 eal*.
 
-## Icons and type
+## Pictures
 
-Category icons are original SVG paintings in `icons.js` (13 kinds), shown full colour in a slot styled like a classic
-MMO bag: hard dark edge, faint bevel, vignette (`.slot` in the stylesheet). They are not game assets. A commissioned,
-hand-painted set would replace the symbols in `icons.js` one for one. Type: Geist and Instrument Serif, both under the SIL Open Font License (`assets/OFL-*.txt`). Earlier looks (pixel, WoW
-cooking book, gothic, the three-direction mockups) are in `../archive`.
+One colour language everywhere, validated for colour-blind separation in light and dark: green (`--home`) for cooked
+at home and groceries, tomato (`--out`) for takeaway, grey for nothing. `charts.js` draws them as SVG, no library:
+
+- **The month** (home page): a calendar seen slightly from above, one tile per day, one thin slab per meal stacked on
+  it, green when cooked, tomato for a takeaway, a small gap between slabs so they can be counted. Days ahead are
+  outlined, today has a dark edge. Tap a day for what was cooked and ordered; drag sideways to turn it a little.
+- **Spending** (Ledger): one slab for this month's food spending against your usual by now. The outline is the usual,
+  the green and tomato parts are groceries and takeaway, the empty rest is what you kept; the legend carries the values.
+- **Weeks** (Ledger): the last weeks as slim stacked columns in the same colours, tap one for its numbers; the list
+  below keeps every value as text.
+
+The streak still shows only as the level line's colour, now green like everything else about cooking.
+
+## Type
+
+Geist and Instrument Serif, both under the SIL Open Font License (`assets/OFL-*.txt`). There are no food icons: they
+never looked right and could not cover every cuisine. Earlier looks (pixel, WoW cooking book, gothic, painted icons,
+the three-direction mockups) are in `../archive`.
 
 ## On iPhone
 

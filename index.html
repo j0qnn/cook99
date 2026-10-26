@@ -1,11 +1,16 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)"><meta name="description" content="Order less, cook more. Level Cooking to 99."><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Cook99"><link rel="stylesheet" href="./styles.css?v=12"><title>Cook99</title></head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)"><meta name="description" content="Order less, cook more. Level Cooking to 99."><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Cook99"><link rel="stylesheet" href="./styles.css?v=15"><title>Cook99</title></head>
 <body><main class="page">
   <header class="top"><span class="mark">Cook99</span><nav><button id="weekButton" class="link" type="button">Week</button><button id="ledgerButton" class="link" type="button">Ledger</button></nav></header>
   <section class="hero" aria-label="Cooking level">
     <div class="hero-row"><p class="level"><span id="level">1</span></p><div class="hero-side"><p class="caption">Cooking</p><p class="sub" id="xpText">0 / 2 xp</p></div>
       <button id="purse" class="purse" type="button" aria-label="Kept this month. Open the ledger."><span id="purseAmount">—</span><span class="caption">kept this month</span></button></div>
     <div class="bar" id="bar" role="progressbar" aria-label="Progress to the next level" aria-valuemin="0" aria-valuemax="100"><i id="barFill"></i></div>
+  </section>
+  <section class="month" aria-labelledby="monthTitle">
+    <div class="month-head"><p class="caption" id="monthTitle">This month</p><p class="sub" id="monthLine"></p></div>
+    <div id="monthChart" class="chart"></div>
+    <div class="legend"><span><i class="key home"></i>Cooked at home</span><span><i class="key out"></i>Takeaway</span><span class="hint">One slab per meal · tap a day</span></div>
   </section>
   <div class="tabs" role="tablist" aria-label="Show">
     <button class="tab is-on" type="button" data-view="all">All</button><button class="tab" type="button" data-view="ready">Ready</button><button class="tab" type="button" data-view="quick">Quick</button><button class="tab" type="button" data-view="week">This week</button>
@@ -17,7 +22,7 @@
 <div id="ding" class="ding" hidden role="alert"><canvas id="dingFx" class="ding-fx" aria-hidden="true"></canvas><div class="ding-inner"><p class="caption">Cooking</p>
   <div class="ding-num" aria-hidden="true"><span id="dingOld" class="old">1</span><span id="dingNew" class="new">2</span></div>
   <div class="ding-line"><i></i></div>
-  <div class="ding-dialog"><span class="slot lg" aria-hidden="true"><svg><use href="#i-portrait"/></svg></span><div class="ding-text"><p class="ding-title" id="dingTitle"></p><p class="ding-sub" id="dingSub"></p><p class="ding-note" id="dingNote"></p><p class="ding-continue">Tap to carry on</p></div></div></div></div>
+  <div class="ding-dialog"><div class="ding-text"><p class="ding-title" id="dingTitle"></p><p class="ding-sub" id="dingSub"></p><p class="ding-note" id="dingNote"></p><p class="ding-continue">Tap to carry on</p></div></div></div></div>
 
 <dialog id="welcomeDialog"><form id="welcomeForm"><h2>Order less. Cook more.</h2>
   <p class="muted">Every dish you cook is kept here with its ingredients and earns experience toward Cooking 99. Money is measured, not guessed: your usual month of food spending, delivery and groceries, against what you actually spend from today.</p>
@@ -30,19 +35,19 @@
   <input id="cookSearch" class="search" placeholder="What did you make?" autocomplete="off" aria-label="Dish">
   <div id="cookResults" class="results"></div>
   <div id="newDish" hidden><p class="caption" id="newLabel">New dish</p>
-    <div class="grid"><label>Kind<select id="newCategory"></select></label><label>Effort<select id="newTier"></select></label></div>
     <label>Main ingredients<input id="newIngredients" autocomplete="off" placeholder="lentils, onions, garlic"></label></div>
+  <div class="seg" id="mealSeg" role="tablist" aria-label="Which meal"><button type="button" data-meal="breakfast">Breakfast</button><button type="button" data-meal="lunch">Lunch</button><button type="button" data-meal="dinner">Dinner</button></div>
   <label>Day<input id="cookDate" type="date" required></label>
   <p class="error" id="cookError" role="alert"></p><button id="cookSave" class="pill primary wide" type="submit" disabled>Cook</button></form></dialog>
 
 <dialog id="editDialog"><form id="editForm"><div class="head"><h2>Edit</h2><button class="close" type="button" data-close="editDialog" aria-label="Close">Close</button></div>
   <label>Name<input id="editName" maxlength="60" required autocomplete="off"></label>
-  <div class="grid"><label>Kind<select id="editCategory"></select></label><label>Minutes<input id="editMinutes" inputmode="numeric"></label></div>
+  <label>Minutes<input id="editMinutes" inputmode="numeric" placeholder="optional"></label>
   <label>Main ingredients<input id="editIngredients" autocomplete="off"></label>
   <p class="error" id="editError" role="alert"></p><button class="pill primary wide" type="submit">Save</button></form></dialog>
 
 <dialog id="orderDialog"><form id="orderForm"><div class="head"><h2>Spent</h2><button class="close" type="button" data-close="orderDialog" aria-label="Close">Close</button></div>
-  <div class="seg" role="tablist" aria-label="What kind of spending"><button type="button" class="is-on" data-kind="takeaway">Takeaway</button><button type="button" data-kind="groceries">Groceries</button></div>
+  <div class="seg" id="spendSeg" role="tablist" aria-label="What kind of spending"><button type="button" class="is-on" data-kind="takeaway">Takeaway</button><button type="button" data-kind="groceries">Groceries</button></div>
   <label>Amount on the receipt<input id="orderAmount" inputmode="decimal" placeholder="23.50" required></label>
   <label><span id="orderNoteLabel">What or where</span><input id="orderNote" maxlength="60" autocomplete="off" placeholder="optional"></label>
   <label class="check" id="plannedRow"><input id="orderPlanned" type="checkbox"><span>Planned treat<small id="plannedNote">One a week. It still costs what it costs.</small></span></label>
@@ -55,8 +60,10 @@
   <p class="caption">To buy</p><div id="shopList" class="rows"></div><button id="logShop" class="pill wide" type="button">Log this shop</button><button id="clearWeek" class="link" type="button">Clear the week</button></dialog>
 
 <dialog id="ledgerDialog"><div class="head"><h2>Ledger</h2><button class="close" type="button" data-close="ledgerDialog" aria-label="Close">Close</button></div>
-  <p class="figure" id="ledgerKept"></p><p class="muted" id="ledgerLine"></p><p class="muted" id="ledgerMeal"></p><p class="muted" id="ledgerTotal"></p>
-  <p class="caption">Weeks</p><div id="weeks" class="rows"></div><p class="caption">Months</p><div id="months" class="rows"></div>
+  <p class="figure" id="ledgerKept"></p><p class="muted" id="ledgerLine"></p>
+  <div id="spendMeter" class="chart"></div><div class="legend" id="spendLegend"></div>
+  <p class="muted" id="ledgerMeal"></p><p class="muted" id="ledgerTotal"></p>
+  <p class="caption">Weeks</p><div id="weekChart" class="chart"></div><div class="axis" id="weekAxis"></div><div id="weeks" class="rows"></div><p class="caption">Months</p><div id="months" class="rows"></div>
   <p class="caption">Entries</p><div id="entries" class="rows"></div><button id="settingsButton" class="pill wide" type="button">Settings</button></dialog>
 
 <dialog id="settingsDialog"><form id="settingsForm"><div class="head"><h2>Settings</h2><button class="close" type="button" data-close="settingsDialog" aria-label="Close">Close</button></div>
@@ -65,9 +72,8 @@
   <label>Started<input id="settingSince" type="date" required></label>
   <label>Currency<select id="settingCurrency"><option value="EUR">Euro</option><option value="USD">US dollar</option><option value="GBP">Pound</option></select></label>
   <p class="error" id="settingsError" role="alert"></p><button class="pill primary wide" type="submit">Save</button>
-  <label class="check"><input id="soundSetting" type="checkbox"><span>Sound on a new level<small>A soft chime. Off when your phone is on silent.</small></span></label>
   <button type="button" id="previewDing" class="link">Preview the level-up</button>
   <p class="caption">Your data</p><p class="muted">Kept in this browser only. Export now and then.</p>
   <div class="grid"><button type="button" id="exportButton" class="pill">Export</button><label class="pill file">Import<input id="importFile" type="file" accept="application/json,.json"></label></div>
   <button type="button" id="resetButton" class="link danger">Start over</button></form></dialog>
-<script type="module" src="./app.js?v=18"></script></body></html>
+<script type="module" src="./app.js?v=21"></script></body></html>
