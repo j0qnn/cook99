@@ -1,0 +1,308 @@
+import {KEY,CURRENCIES,CATEGORIES,TIERS,initialState,dayKey,setBaseline,logCooked,logOrdered,logGroceries,GROCERY_SPANS,lastGrocerySpan,removeEvent,summary,xpInfo,xpAtLevel,dishXp,findDish,book,searchDishes,saveRecipe,setHave,hasIngredient,isReady,picksFor,togglePick,clearPicks,shoppingList,weekStart,weeks,plannedUsed,validateState,load,persist} from './model.js';
+import {sprite} from './icons.js';
+document.body.insertAdjacentHTML('afterbegin',sprite());
+const $=id=>document.getElementById(id);
+const set=(id,text)=>{$(id).textContent=text;};
+const el=(tag,className,text)=>{const n=document.createElement(tag);if(className)n.className=className;if(text!==undefined)n.textContent=text;return n;};
+const button=(className,text,onclick)=>{const b=el('button',className,text);b.type='button';b.onclick=onclick;return b;};
+const option=(value,text)=>Object.assign(document.createElement('option'),{value,textContent:text});
+// A category icon in an inventory slot: hard edge, inner bevel, vignette (styled in CSS).
+function slot(category,size=''){const box=el('span',`slot ${size}`),svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href',`#i-${category||'feast'}`);svg.append(use);box.append(svg);box.setAttribute('aria-hidden','true');return box;}
+let state,loadError=false,undo=null,open=null,view='all';
+// Inside the iPhone app, saving goes to a file the app owns (window.cook99Storage, injected natively); in a browser, localStorage.
+const store=window.cook99Storage||localStorage;
+const native=msg=>{try{window.webkit?.messageHandlers?.native?.postMessage(msg);return Boolean(window.webkit?.messageHandlers?.native);}catch{return false;}};
+const SOUND_KEY='cook99.sound';   // a preference of this phone, not part of the record
+const soundOn=()=>{try{return store.getItem(SOUND_KEY)!=='off';}catch{return true;}};
+try{state=load(store);}catch{state=initialState();loadError=true;}
+const money=n=>new Intl.NumberFormat(undefined,{style:'currency',currency:state.currency,maximumFractionDigits:0}).format(n/100);
+const exact=n=>new Intl.NumberFormat(undefined,{style:'currency',currency:state.currency}).format(n/100);
+const shortDate=k=>new Intl.DateTimeFormat(undefined,{day:'numeric',month:'short'}).format(new Date(`${k}T12:00:00`));
+const monthName=k=>new Intl.DateTimeFormat(undefined,{month:'long',year:'numeric'}).format(new Date(`${k}-15T12:00:00`));
+const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+
+// ---------- messages ----------
+function message(text,kind='',canUndo=false){
+  const line=el('div',`msg ${kind}`,text);
+  if(canUndo)line.append(button(null,'Undo',()=>{if(!undo)return;persist(undo,store);state=undo;undo=null;render();line.remove();}));
+  $('messages').append(line);line.addEventListener('animationend',()=>line.remove());while($('messages').children.length>2)$('messages').firstChild.remove();
+}
+function commit(next,text,kind=''){
+  if(loadError){message('Saved data could not be read. Export it in Settings first.');return false;}
+  persist(next,store);undo=state;state=next;render();if(text)message(text,kind,true);return true;
+}
+
+// ---------- the page ----------
+function render(){
+  const s=summary(state),info=xpInfo(s),m=s.thisMonth;
+  set('level',String(s.level));set('xpText',s.level>=99?`${info.xp.toLocaleString()} xp`:`${info.into.toLocaleString()} / ${info.span.toLocaleString()} xp`);
+  set('purseAmount',state.baseline?money(m.kept):'—');$('purse').classList.toggle('is-negative',m.kept<0);
+  $('barFill').style.width=`${info.fraction*100}%`;$('bar').setAttribute('aria-valuenow',String(info.pct));$('bar').classList.toggle('is-rested',s.rested);
+  const picks=picksFor(state).length;set('weekButton',picks?`Week · ${picks}`:'Week');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('is-on',t.dataset.view===view));
+  renderList();$('cookButton').disabled=loadError;
+}
+function renderList(){
+  const box=$('list'),week=new Set(picksFor(state).map(d=>d.name)),all=book(state);box.replaceChildren();
+  const list=all.filter(d=>view==='all'||(view==='ready'&&isReady(state,d))||(view==='quick'&&isReady(state,d)&&(d.minutes??99)<=20)||(view==='week'&&week.has(d.name)));
+  if(!all.length){box.append(el('p','empty','Nothing here yet. Cook something and it stays here, with its ingredients, ready for the next time you need an idea.'));return;}
+  if(!list.length){box.append(el('p','empty',{ready:'Nothing has all its ingredients in. Tap an ingredient to mark it.',quick:'Nothing quick has all its ingredients in.',week:'Nothing planned. Open a dish and plan it.'}[view]));return;}
+  for(const d of list){
+    const item=el('div','item'),row=button('row',null,()=>{open=open===d.name?null:d.name;renderList();});
+    row.append(slot(d.category),el('span','name',d.name));if(week.has(d.name))row.append(el('span','meta','this week'));if(isReady(state,d))row.append(Object.assign(el('span','dot'),{title:'Everything is in'}));
+    row.append(el('span','meta',`${d.cooked}×`));item.append(row);
+    if(open===d.name)item.append(details(d,week.has(d.name)));
+    box.append(item);
+  }
+}
+function details(d,planned){
+  const box=el('div','open');
+  box.append(el('p','facts',[`${d.xp} xp`,d.minutes?`${d.minutes} min`:null,`last ${shortDate(d.last)}`].filter(Boolean).join(' · ')));
+  const ings=el('div','ings');
+  if(!d.ingredients.length)ings.append(el('span','facts','No ingredients written down.'));
+  for(const name of d.ingredients){const have=hasIngredient(state,name);const b=button(`ing${have?'':' is-out'}`,name,()=>commit(setHave(state,name,!have)));b.title=have?'In. Tap when it runs out.':'Out. Tap when you have it.';ings.append(b);}
+  const acts=el('div','acts');
+  acts.append(button('pill primary small','Cook again',()=>cookDish(d.name,dayKey())),button('link',planned?'Unplan':'Plan for this week',()=>{try{commit(togglePick(state,d.name));}catch(e){message(e.message);}}),button('link','Edit',()=>openEdit(d)));
+  box.append(ings,acts);return box;
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{view=t.dataset.view;open=null;render();});
+
+// ---------- cooking ----------
+function cookDish(name,date){
+  try{
+    const before=summary(state),r=logCooked(state,{dish:name,date}),after=summary(r.state),g=after.gains.get(r.event.id);open=r.event.dish;
+    if(!commit(r.state,g?`${r.event.dish} · +${g.base+g.rested} xp`:`${r.event.dish} · no xp, three meals already today`))return false;
+    if(after.level>before.level)levelUp(before.level,after.level,after);
+    return true;
+  }catch(e){message(e.message);return false;}
+}
+// ---------- the level-up ----------
+// The level-up in Cook99's own voice: short, warm, a little dry. One line per level, rotating so it rarely repeats.
+const LEVEL_LINES=['Well cooked.','Earned at the stove.','Another level, no delivery fee.','Your hands are learning.','That one tasted like progress.','Steady hands, better dinners.','Slow and honest, like a good stew.','One more notch on the spoon.','The kitchen remembers.','Cooked, not ordered.','Better than last time.'];
+const MILESTONES={10:'Double digits.',25:'A quarter of the way.',50:'Half the levels. Not half the work.',75:'Three quarters of the levels.',92:'Half way to 99, in experience.'};
+let dingTimer=null;
+// The jingle as an 8-bit chiptune, built the way an old console's sound chip did it: two pulse channels (narrow duty
+// cycles for the nasal tone), a triangle bass, a noise channel for hats, snare and crash, volume in stepped 60 Hz
+// frames, and the held chord as a fast arpeggio because the chip could not play chords. The melody is original.
+const hz=n=>440*2**((n-69)/12);   // MIDI note number to frequency
+function chime(big=false){
+  if(!soundOn()||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;const c=chime.ctx||(chime.ctx=new AC());if(c.state==='suspended')c.resume();
+    const t0=c.currentTime+.06,beat=.18,FRAME=1/60,at=e=>t0+e*beat;
+    const out=c.createGain();out.gain.value=.42;out.connect(c.destination);
+    const pulse=duty=>{chime.waves??={};if(!chime.waves[duty]){const n=64,re=new Float32Array(n),im=new Float32Array(n);for(let k=1;k<n;k++)re[k]=4/(k*Math.PI)*Math.sin(k*Math.PI*duty);chime.waves[duty]=c.createPeriodicWave(re,im);}return chime.waves[duty];};
+    // A stepped envelope: full on, a quick drop to a sustain level, then frame-by-frame decay at the end.
+    function steps(g,s,e,vol,sustain=.7,release=.12){g.gain.setValueAtTime(vol,s);g.gain.setValueAtTime(vol*sustain,s+FRAME*3);
+      const frames=Math.max(1,Math.round(release/FRAME));for(let i=1;i<=frames;i++)g.gain.setValueAtTime(vol*sustain*(1-i/frames),e+i*FRAME);}
+    function square(note,start,len,{duty=.125,vol=.22,vibrato=false,slide=0}={}){
+      const s=at(start),e=at(start+len),o=c.createOscillator(),g=c.createGain();o.setPeriodicWave(pulse(duty));
+      o.frequency.setValueAtTime(hz(note-slide),s);if(slide)o.frequency.setValueAtTime(hz(note),s+FRAME*2);
+      if(vibrato)for(let i=0,t=s+.18;t<e;i++,t+=FRAME*4)o.frequency.setValueAtTime(hz(note)*(i%2?1.012:.988),t);   // stepped, as a chip does it
+      steps(g,s,e,vol);o.connect(g).connect(out);o.start(s);o.stop(e+.2);
+    }
+    function arpeggio(notes,start,len,{duty=.25,vol=.13}={}){   // the chord, cycled one note per frame pair
+      const s=at(start),e=at(start+len),o=c.createOscillator(),g=c.createGain();o.setPeriodicWave(pulse(duty));
+      for(let i=0,t=s;t<e;i++,t+=FRAME*2)o.frequency.setValueAtTime(hz(notes[i%notes.length]),t);
+      steps(g,s,e,vol,.75,.25);o.connect(g).connect(out);o.start(s);o.stop(e+.3);
+    }
+    function bass(note,start,len,vol=.32){const s=at(start),e=at(start+len),o=c.createOscillator(),g=c.createGain();o.type='triangle';o.frequency.value=hz(note);
+      g.gain.setValueAtTime(vol,s);g.gain.setValueAtTime(0,e);o.connect(g).connect(out);o.start(s);o.stop(e+.02);}
+    const noiseBuf=(()=>{if(chime.noise)return chime.noise;const b=c.createBuffer(1,c.sampleRate*.6,c.sampleRate),d=b.getChannelData(0);let r=1;for(let i=0;i<d.length;i++){if(i%3===0){r^=r<<7;r^=r>>9;r^=r<<8;r&=0xffff;}d[i]=(r&1)?.8:-.8;}return chime.noise=b;})();   // coarse LFSR-style noise
+    function noise(start,len,vol,rate=1){const s=at(start),src=c.createBufferSource(),g=c.createGain();src.buffer=noiseBuf;src.playbackRate.value=rate;
+      const frames=Math.max(1,Math.round(len/FRAME));for(let i=0;i<=frames;i++)g.gain.setValueAtTime(vol*(1-i/frames)**1.5,s+i*FRAME);
+      src.connect(g).connect(out);src.start(s);src.stop(s+len+.05);}
+    const hold=big?3:5;
+    // The motif, in C: G G | C D E . | D E | G held, the chord arpeggiated under it.
+    for(const [n,s,l] of [[67,0,.5],[67,.5,.5],[72,1,1],[74,2,1],[76,3,1.6],[74,5,.5],[76,5.5,.5]])square(n,s,l*.92);
+    square(79,6,hold,{vibrato:true,slide:1});
+    for(const [n,s,l] of [[64,1,1],[65,2,1],[67,3,1.6],[65,5,.5],[67,5.5,.5]])square(n,s,l*.92,{duty:.25,vol:.12});   // harmony a third or so below
+    arpeggio([72,76,79],6,hold);
+    for(const [n,s,l] of [[43,0,1],[48,1,1],[50,2,1],[52,3,2],[55,5,1],[48,6,hold]])bass(n,s,l*.95);
+    for(let i=0;i<6;i++)noise(i,.05,.10,2);noise(3,.12,.22,.8);noise(5,.12,.22,.8);noise(6,big?.6:.9,.26,.5);   // hats, snare, crash
+    if(big){   // 99: a second phrase climbs to the top C over a bigger arpeggio
+      for(const [n,s,l] of [[79,9,.5],[81,9.5,.5],[83,10,1]])square(n,s,l*.92);square(84,11,7,{vibrato:true,slide:1});
+      arpeggio([72,76,79,84],11,7);bass(43,9,2,.3);bass(36,11,7,.34);for(let i=9;i<11;i+=.5)noise(i,.05,.1,2);noise(11,1.1,.28,.5);
+    }
+  }catch{}
+}
+// Fireworks around the numeral: rockets streak up from below, then each bursts into big square sparks in two bright
+// colours with white glints, trailing as they fan out, fall and twinkle out. More volleys for milestones and 99.
+const SPARKS=['#ff3b30','#ff9f0a','#ffd60a','#a6ff00','#34c759','#32d7ff','#0a84ff','#bf5af2','#ff2d92','#ff6b3d'];
+let fxFrame=0;
+function fireworks(big=false){
+  const canvas=$('dingFx'),ctx=canvas.getContext('2d'),dpr=Math.min(2,window.devicePixelRatio||1);
+  const w=canvas.clientWidth,h=canvas.clientHeight;canvas.width=w*dpr;canvas.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const box=document.querySelector('.ding-num').getBoundingClientRect(),cx=box.left+box.width/2,cy=box.top+box.height*.5;   // the still box, not the rolling digit
+  const rockets=[],sparks=[],volleys=big?12:7,pick=()=>SPARKS[Math.floor(Math.random()*SPARKS.length)];
+  for(let b=0;b<volleys;b++){
+    const angle=Math.PI*(1.12-1.24*(b+.5)/volleys)+(Math.random()-.5)*.3,dist=(big?150:130)+Math.random()*70;   // a fan over the top half
+    const bx=Math.max(24,Math.min(w-24,cx+Math.cos(angle)*dist*1.15)),by=Math.max(30,cy-Math.abs(Math.sin(angle))*dist*.95-10);
+    const launch=300+b*(big?150:170)+Math.random()*90,flight=420+Math.random()*120,pop=launch+flight,a=pick(),c=pick();
+    rockets.push({x0:bx+(Math.random()-.5)*60,y0:h+10,x1:bx,y1:by,launch,flight});
+    for(let i=0;i<(big?60:48);i++){const t=Math.random()*Math.PI*2,v=2.2+Math.random()*3.6;
+      sparks.push({x:bx,y:by,vx:Math.cos(t)*v,vy:Math.sin(t)*v-1,delay:pop,life:950+Math.random()*750,size:Math.random()<.3?7:Math.random()<.6?5:4,colour:Math.random()<.14?'#ffffff':Math.random()<.5?a:c});}
+    for(let i=0;i<12;i++){const t=Math.random()*Math.PI*2,v=.6+Math.random()*1.2;   // a small inner ring that crackles after the main burst
+      sparks.push({x:bx,y:by,vx:Math.cos(t)*v,vy:Math.sin(t)*v,delay:pop+120,life:600+Math.random()*300,size:3,colour:'#fff6c2'});}
+  }
+  const start=performance.now();cancelAnimationFrame(fxFrame);
+  const pos=(s,age)=>{const k=age/16.7;return [s.x+s.vx*k*(1-k*.004),s.y+s.vy*k+.05*k*k];};   // a little drag and gravity
+  const tick=now=>{
+    const t=now-start;ctx.clearRect(0,0,w,h);let alive=false;
+    for(const r of rockets){const age=t-r.launch;if(age<0){alive=true;continue;}if(age>r.flight)continue;alive=true;
+      const p=1-(1-age/r.flight)**2,x=r.x0+(r.x1-r.x0)*p,y=r.y0+(r.y1-r.y0)*p;
+      for(let i=0;i<6;i++){ctx.globalAlpha=.85-i*.13;ctx.fillStyle=i?'#ffb35c':'#fff3c4';ctx.fillRect(Math.round(x-(r.x1-r.x0)*.012*i),Math.round(y+i*7),4,5);}}
+    for(const s of sparks){
+      const age=t-s.delay;if(age<0){alive=true;continue;}if(age>s.life)continue;alive=true;
+      const fade=1-age/s.life;if(fade<.3&&Math.floor(age/80)%2)continue;   // twinkle before going out
+      const [x,y]=pos(s,age),[tx,ty]=pos(s,Math.max(0,age-60));
+      ctx.globalAlpha=Math.min(1,fade*1.5)*.35;ctx.fillStyle=s.colour;ctx.fillRect(Math.round(tx),Math.round(ty),s.size-1,s.size-1);   // trail
+      ctx.globalAlpha=Math.min(1,fade*1.5);ctx.fillRect(Math.round(x),Math.round(y),s.size,s.size);
+    }
+    ctx.globalAlpha=1;if(alive&&!$('ding').hidden)fxFrame=requestAnimationFrame(tick);else ctx.clearRect(0,0,w,h);
+  };
+  fxFrame=requestAnimationFrame(tick);
+}
+function levelUp(from,to,s){
+  const bar=$('bar');bar.classList.add('is-full');   // the line runs to the end first, the old number held until the reveal
+  const span=xpAtLevel(from+1)-xpAtLevel(from);set('level',String(from));set('xpText',`${span.toLocaleString()} / ${span.toLocaleString()} xp`);
+  setTimeout(()=>{
+    const info=xpInfo(s),gained=to-from;
+    set('dingOld',String(from));set('dingNew',String(to));
+    set('dingTitle',to>=99?'Cooking 99. Nothing left to learn but new dishes.':gained>1?`Up ${gained} levels in one go.`:LEVEL_LINES[to%LEVEL_LINES.length]);
+    set('dingSub',to>=99?`${plural(s.cookedTotal,'meal')} cooked to get here.`:`Cooking ${to} · ${info.remaining.toLocaleString()} xp to ${to+1}`);
+    set('dingNote',to<99?(MILESTONES[to]||''):'');
+    document.querySelectorAll('dialog[open]').forEach(d=>d.close());   // open sheets sit in the top layer and would hide it
+    const ding=$('ding');ding.classList.remove('is-leaving');ding.hidden=false;
+    fireworks(to>=99||Boolean(MILESTONES[to]));chime(to>=99);if(!native({type:'haptic',kind:'levelup'}))try{navigator.vibrate?.([12,60,24]);}catch{}
+    clearTimeout(dingTimer);dingTimer=setTimeout(closeDing,to>=99?9000:6000);
+  },520);
+}
+function closeDing(){
+  const ding=$('ding');if(ding.hidden)return;clearTimeout(dingTimer);ding.classList.add('is-leaving');
+  setTimeout(()=>{ding.hidden=true;ding.classList.remove('is-leaving');$('bar').classList.remove('is-full');cancelAnimationFrame(fxFrame);render();},480);
+}
+$('ding').onclick=closeDing;
+// Plays the moment from your current level to the next without changing the record.
+$('previewDing').onclick=()=>{const s=summary(state),to=Math.min(99,s.level+1);document.querySelectorAll('dialog[open]').forEach(d=>d.close());window.scrollTo({top:0,behavior:'instant'});levelUp(to-1,to,{...s,level:to,xp:xpAtLevel(to),cookedTotal:s.cookedTotal});};
+document.addEventListener('keydown',e=>{if(!$('ding').hidden&&(e.key==='Escape'||e.key==='Enter'||e.key===' '))closeDing();});
+
+let picked=null;
+function openCook(){
+  picked=null;$('cookSearch').value='';$('cookDate').value=dayKey();$('cookDate').max=dayKey();$('cookDate').min=state.baseline?.since||'';$('cookError').textContent='';
+  $('newCategory').replaceChildren(...CATEGORIES.map(c=>option(c.key,c.name)));$('newCategory').value='veg';
+  $('newTier').replaceChildren(...TIERS.map(t=>option(String(t.level),`${t.label} · ${dishXp(t.level)} xp`)));$('newTier').value=String(TIERS[1].level);$('newIngredients').value='';
+  results();$('cookDialog').showModal();$('cookSearch').focus();
+}
+function results(){
+  const q=$('cookSearch').value.trim(),box=$('cookResults'),found=searchDishes(state,q,q?8:9);box.replaceChildren();
+  const exactMatch=q?found.find(d=>d.name.toLowerCase()===q.toLowerCase()):null;
+  if(picked&&!found.some(d=>d.name===picked.name))picked=null;if(!picked&&exactMatch)picked=exactMatch;
+  let lastGroup=null;
+  for(const d of found){
+    const group=d.inBook?'Yours':'Ideas';if(group!==lastGroup){box.append(el('p','caption result-group',group));lastGroup=group;}
+    const row=button(`result${picked&&picked.name===d.name?' is-on':''}`,null,()=>{picked=d;$('cookSearch').value=d.name;results();});
+    const name=el('span','name',d.name);if(d.ingredients.length)name.append(el('small',null,d.ingredients.join(', ')));row.append(slot(d.category,'sm'),name,el('span','meta',`${d.xp} xp`));box.append(row);
+  }
+  const isNew=Boolean(q)&&!exactMatch&&!picked;$('newDish').hidden=!isNew;if(isNew)set('newLabel',`New: ${q}`);
+  const save=$('cookSave');save.disabled=!picked&&!isNew;save.textContent=picked?`Cook · ${picked.xp} xp`:isNew?`Add and cook · ${dishXp(Number($('newTier').value))} xp`:'Cook';
+}
+$('cookSearch').addEventListener('input',()=>{picked=null;results();});$('newTier').addEventListener('change',results);
+$('cookForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  try{let name=picked?.name;
+    if(!name){name=$('cookSearch').value.trim().replace(/\s+/g,' ');state=saveRecipe(state,{name,level:Number($('newTier').value),category:$('newCategory').value,ingredients:$('newIngredients').value});}
+    if(cookDish(name,$('cookDate').value))$('cookDialog').close();}
+  catch(err){$('cookError').textContent=err.message;}
+});
+
+// ---------- editing ----------
+let editing=null;
+function openEdit(d){editing=d;$('editCategory').replaceChildren(...CATEGORIES.map(c=>option(c.key,c.name)));$('editName').value=d.name;$('editCategory').value=d.category;$('editMinutes').value=d.minutes??'';$('editIngredients').value=d.ingredients.join(', ');$('editError').textContent='';$('editDialog').showModal();}
+$('editForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  try{const name=$('editName').value.trim().replace(/\s+/g,' ');let next=saveRecipe(state,{name,level:editing.level,category:$('editCategory').value,minutes:$('editMinutes').value.trim(),ingredients:$('editIngredients').value},editing.name);
+    if(name.toLowerCase()!==editing.name.toLowerCase())next={...next,events:next.events.map(ev=>ev.type==='cooked'&&ev.dish.toLowerCase()===editing.name.toLowerCase()?{...ev,dish:name}:ev)};   // a rename keeps its history
+    open=name;commit(next,'Saved');$('editDialog').close();}
+  catch(err){$('editError').textContent=err.message;}
+});
+
+// ---------- spending: takeaway or groceries ----------
+let spendKind='takeaway';
+function plannedState(){const used=plannedUsed(state,weekStart($('orderDate').value||dayKey()));$('orderPlanned').disabled=used;if(used)$('orderPlanned').checked=false;set('plannedNote',used?'This week’s treat is already used.':'One a week. It still costs what it costs.');}
+function setKind(kind){
+  spendKind=kind;document.querySelectorAll('.seg button').forEach(b=>{b.classList.toggle('is-on',b.dataset.kind===kind);b.setAttribute('aria-selected',String(b.dataset.kind===kind));});
+  const shop=kind==='groceries';$('plannedRow').hidden=shop;$('lastsRow').hidden=!shop;
+  set('orderNoteLabel',shop?'Shop':'What or where');$('orderNote').placeholder=shop?'Rimi, optional':'optional';$('orderAmount').placeholder=shop?'84.20':'23.50';
+  set('orderSave',shop?'Log groceries':'Log takeaway');
+}
+function openSpent(kind='takeaway'){
+  $('orderAmount').value='';$('orderNote').value='';$('orderPlanned').checked=false;$('orderDate').value=dayKey();$('orderDate').max=dayKey();$('orderDate').min=state.baseline?.since||'';
+  $('groceryDays').replaceChildren(...GROCERY_SPANS.map(x=>option(String(x.days),x.label)));$('groceryDays').value=String(lastGrocerySpan(state));
+  plannedState();setKind(kind);$('orderError').textContent='';$('orderDialog').showModal();$('orderAmount').focus();
+}
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setKind(b.dataset.kind));
+$('orderButton').onclick=()=>openSpent();
+$('orderDate').addEventListener('input',plannedState);
+$('orderForm').addEventListener('submit',e=>{e.preventDefault();try{
+  if(spendKind==='groceries'){const r=logGroceries(state,{amount:$('orderAmount').value,note:$('orderNote').value,date:$('orderDate').value,days:Number($('groceryDays').value)});
+    commit(r.state,`${r.event.note||'Groceries'} · ${exact(r.event.amount)} · ${GROCERY_SPANS.find(x=>x.days===r.event.days)?.label.toLowerCase()||`${r.event.days} days`}`);}
+  else{const r=logOrdered(state,{amount:$('orderAmount').value,note:$('orderNote').value,date:$('orderDate').value,planned:$('orderPlanned').checked});commit(r.state,`${r.event.planned?'Planned treat':'Takeaway'} · ${exact(r.event.amount)}`);}
+  $('orderDialog').close();}catch(err){$('orderError').textContent=err.message;}});
+
+// ---------- week ----------
+function line(left,right){const row=el('div','line');row.append(left);if(right)row.append(right);return row;}
+function openWeek(){
+  const w=summary(state).thisWeek,list=$('weekList'),shop=$('shopList');list.replaceChildren();shop.replaceChildren();
+  set('weekRhythm',`Cooked ${w.cooked} on ${plural(w.nights,'night')}. Ordered ${w.orders}${w.planned?', one planned':''}.${w.groceries?` Groceries so far ${money(w.groceries)}.`:''}`);
+  const picks=picksFor(state);if(!picks.length)list.append(el('p','empty','Open a dish and plan it for this week.'));
+  for(const d of picks){const left=el('span','grow');left.append(d.name,el('small',null,`${d.xp} xp${isReady(state,d)?' · everything in':''}`));const row=line(left,button('link','Remove',()=>{commit(togglePick(state,d.name));openWeek();}));row.prepend(slot(d.category,'sm'));list.append(row);}
+  const items=shoppingList(state);if(!items.length)shop.append(el('p','empty',picks.length?'Everything is in.':'Nothing yet.'));
+  for(const i of items){const left=el('span','grow');left.append(i.name,el('small',null,i.for.join(', ')));const box=document.createElement('input');box.type='checkbox';box.setAttribute('aria-label',`Bought ${i.name}`);box.onchange=()=>{commit(setHave(state,i.name,true));openWeek();};shop.append(line(left,box));}
+  if(!$('weekDialog').open)$('weekDialog').showModal();
+}
+$('weekButton').onclick=openWeek;$('logShop').onclick=()=>{$('weekDialog').close();openSpent('groceries');};$('clearWeek').onclick=()=>{commit(clearPicks(state),'Week cleared');openWeek();};
+
+// ---------- ledger ----------
+function openLedger(){
+  const s=summary(state),m=s.thisMonth,kept=$('ledgerKept');kept.textContent=state.baseline?exact(m.kept):'—';kept.classList.toggle('is-negative',m.kept<0);
+  set('ledgerLine',state.baseline?`Kept this month. Your usual food spending by now is ${money(m.usual)}; you spent ${money(m.spent)} on ${plural(m.orders,'takeaway')} and ${money(m.groceries)} on groceries, spread over the days they last.`:'Set your usual month in Settings.');
+  set('ledgerMeal',m.homeMeal!=null?`Home meals this month: about ${exact(m.homeMeal)} each.${s.averageOrder?` A takeaway: about ${money(s.averageOrder)}.`:''}`:state.baseline&&!state.baseline.groceries&&m.groceries?'Add your usual grocery month in Settings, or every shop counts as new spending.':'');
+  set('ledgerTotal',state.baseline?`Since ${shortDate(state.baseline.since)}: ${exact(s.keptTotal)} kept, ${plural(s.cookedTotal,'meal')} cooked.`:'');
+  const wk=$('weeks'),mo=$('months'),en=$('entries');wk.replaceChildren();mo.replaceChildren();en.replaceChildren();
+  for(const w of weeks(state)){const left=el('span','grow');left.append(`Week of ${shortDate(w.start)}`,el('small',null,`cooked ${w.cooked} on ${plural(w.nights,'night')}${w.planned?', a planned treat':''}${w.groceries?` · groceries ${money(w.groceries)}`:''}`));wk.append(line(left,el('span',`amount ${w.unplanned?'bad':'good'}`,`${w.unplanned} unplanned`)));}
+  for(const x of [...s.months].reverse()){const left=el('span','grow');left.append(monthName(x.month),el('small',null,`${plural(x.orders,'takeaway')} ${money(x.spent)} · groceries ${money(x.groceries)} · usual ${money(x.usual)}`));mo.append(line(left,el('span',`amount ${x.kept<0?'bad':'good'}`,`${x.kept<0?'−':'+'}${money(Math.abs(x.kept))}`)));}
+  const all=[...state.events].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);if(!all.length)en.append(el('p','empty','Nothing yet.'));
+  for(const ev of all.slice(0,60)){const left=el('span','grow'),x=button('link','Remove',()=>{commit(removeEvent(state,ev.id),'Removed');openLedger();});
+    if(ev.type==='cooked'){const g=s.gains.get(ev.id);left.append(ev.dish,el('small',null,`${shortDate(ev.date)} · ${g?`${g.base+g.rested} xp`:'no xp, three already that day'}`));}
+    else if(ev.type==='groceries')left.append(ev.note||'Groceries',el('small',null,`${shortDate(ev.date)} · ${exact(ev.amount)} · groceries, ${GROCERY_SPANS.find(x=>x.days===ev.days)?.label.toLowerCase()||`${ev.days} days`}`));
+    else left.append(ev.note||'Takeaway',el('small',null,`${shortDate(ev.date)} · ${exact(ev.amount)}${ev.planned?' · planned':''}`));
+    en.append(line(left,x));}
+  if(!$('ledgerDialog').open)$('ledgerDialog').showModal();
+}
+$('purse').onclick=openLedger;$('ledgerButton').onclick=openLedger;
+
+// ---------- settings and first run ----------
+$('settingsButton').onclick=()=>{$('soundSetting').checked=soundOn();const b=state.baseline;$('settingMonthly').value=b?(b.monthly/100).toFixed(2):'';$('settingOrders').value=b?String(b.orders):'';$('settingGroceries').value=b?.groceries?(b.groceries/100).toFixed(2):'';$('settingSince').value=b?b.since:dayKey();$('settingSince').max=dayKey();$('settingCurrency').value=state.currency;$('settingsError').textContent=loadError?'Saved data needs recovery. Export it, then import a valid backup.':'';$('settingsDialog').showModal();};
+$('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{const next=setBaseline({...state,currency:CURRENCIES.includes($('settingCurrency').value)?$('settingCurrency').value:state.currency},{monthly:$('settingMonthly').value,orders:Number($('settingOrders').value),since:$('settingSince').value,groceries:$('settingGroceries').value.trim()});if(next.baseline.since>dayKey())throw new Error('The start date cannot be in the future.');commit(next,'Saved');$('settingsDialog').close();if($('ledgerDialog').open)openLedger();}catch(err){$('settingsError').textContent=err.message;}});
+$('welcomeForm').addEventListener('submit',e=>{e.preventDefault();try{commit(setBaseline({...state,currency:$('welcomeCurrency').value},{monthly:$('welcomeMonthly').value,orders:Number($('welcomeOrders').value),since:dayKey(),groceries:$('welcomeGroceries').value.trim()}));$('welcomeDialog').close();}catch(err){$('welcomeError').textContent=err.message;}});
+// Export: the iPhone share sheet when it can take a file (save to Files, AirDrop, mail), a download otherwise.
+$('exportButton').onclick=async()=>{
+  const raw=loadError?store.getItem(KEY):JSON.stringify(state,null,2),name=`cook99-${dayKey()}.json`,blob=new Blob([raw||''],{type:'application/json'});
+  if(native({type:'export',name,text:raw||''}))return;   // the iPhone app shows its share sheet
+  try{const file=new File([blob],name,{type:'application/json'});if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:'Cook99 backup'});return;}}catch(err){if(err?.name==='AbortError')return;}
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+$('importFile').addEventListener('change',async e=>{try{const file=e.target.files?.[0];if(!file)return;if(file.size>8_000_000)throw new Error('That file is too large to be a backup.');const restored=validateState(JSON.parse(await file.text()));if(!confirm(`Import ${restored.events.length} entries? This replaces what is in this browser.`))return;persist(restored,store);undo=loadError?null:state;state=restored;loadError=false;render();$('settingsDialog').close();message('Imported','',Boolean(undo));}catch(err){$('settingsError').textContent=err.message||'Unable to read this backup.';}finally{e.target.value='';}});
+$('resetButton').onclick=()=>{if(!confirm('Start over? This deletes everything in this browser. Export first if you want to keep it.'))return;state=initialState();persist(state,store);undo=null;loadError=false;open=null;render();$('settingsDialog').close();$('ledgerDialog').close();$('welcomeDialog').showModal();};
+$('cookButton').onclick=openCook;
+$('soundSetting').onchange=e=>{try{store.setItem(SOUND_KEY,e.target.checked?'on':'off');}catch{}if(e.target.checked)chime();};
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
+window.addEventListener('storage',e=>{if(e.key!==KEY)return;try{state=load(store);loadError=false;undo=null;render();}catch{loadError=true;render();}});
+render();
+if(loadError)message('Saved data could not be read. Open the Ledger, then Settings, to export it.');
+else if(!state.baseline)$('welcomeDialog').showModal();
+// Installed to the Home Screen: work offline, and ask the browser to keep this app's data rather than clear it when space runs low.
+if(!window.cook99Storage&&'serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+navigator.storage?.persist?.().catch(()=>{});

@@ -1,0 +1,112 @@
+@font-face{font-family:Geist;src:url('./assets/Geist.ttf') format('truetype');font-weight:100 900;font-display:swap}
+@font-face{font-family:Instrument;src:url('./assets/InstrumentSerif-Regular.ttf') format('truetype');font-display:swap}
+:root{color-scheme:light dark;--bg:#f5f4f0;--surface:#ffffff;--ink:#161614;--soft:#4a4944;--muted:#8d8b84;--line:#e3e1db;--track:#e6e4de;--accent:#e4572e;
+  --sans:Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;--serif:Instrument,'Iowan Old Style',Georgia,serif}
+@media(prefers-color-scheme:dark){:root{--bg:#121211;--surface:#1b1b19;--ink:#f1efe9;--soft:#c4c1b9;--muted:#85827b;--line:#2a2a27;--track:#262624;--accent:#f06a40}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 var(--sans);letter-spacing:-.005em;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit;letter-spacing:inherit}
+.page{max-width:520px;margin:0 auto;padding:max(22px,env(safe-area-inset-top)) 24px 140px}
+.top{display:flex;justify-content:space-between;align-items:center}.mark{font-weight:600;font-size:15px;letter-spacing:-.01em}
+.top nav{display:flex;gap:20px}
+.link{background:none;border:0;padding:4px 0;color:var(--soft);font-size:15px;cursor:pointer}.link:hover{color:var(--ink)}.link.danger{color:var(--accent);display:block;margin:22px auto 0}
+/* The hero: the level as one large serif numeral, the money beside it, a hairline of progress. */
+.hero{margin-top:56px}.hero-row{display:flex;align-items:flex-end;gap:14px}
+.level{margin:0;font:400 128px/.78 var(--serif);letter-spacing:-.03em;font-variant-numeric:lining-nums}
+.hero-side{padding-bottom:6px}.caption{margin:0;font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.sub{margin:3px 0 0;color:var(--soft);font-size:14px;font-variant-numeric:tabular-nums}
+.purse{margin-left:auto;padding:0 0 6px;background:none;border:0;text-align:right;cursor:pointer}.purse #purseAmount{display:block;font:400 40px/1 var(--serif);letter-spacing:-.02em}.purse.is-negative #purseAmount{color:var(--accent)}
+/* Ink normally; the accent while a cooking streak is on. The colour is the only sign of it. */
+.bar{height:2px;margin-top:26px;background:var(--track);border-radius:2px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--ink);transition:width .8s cubic-bezier(.2,.7,.2,1),background .6s ease}
+.bar.is-rested i{background:var(--accent)}
+.tabs{display:flex;gap:22px;margin-top:44px;border-bottom:1px solid var(--line)}
+.tab{position:relative;padding:0 0 12px;background:none;border:0;color:var(--muted);font-size:15px;cursor:pointer}.tab.is-on{color:var(--ink)}.tab.is-on::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1.5px;background:var(--ink)}
+/* The list: plain rows, generous spacing; the chosen dish opens in place. */
+.list{margin-top:6px}
+.item{border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:baseline;gap:12px;width:100%;padding:17px 0;background:none;border:0;text-align:left;cursor:pointer;font-size:17px}
+.row .name{flex:1;font-weight:450}.row .meta{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}.row .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);align-self:center}
+.open{padding:0 0 20px;animation:open .25s ease}@keyframes open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.facts{margin:0;color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
+.ings{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 18px}
+.ing{padding:6px 12px;background:var(--surface);border:1px solid var(--line);border-radius:99px;font-size:14px;cursor:pointer}.ing.is-out{background:none;color:var(--muted);text-decoration:line-through;text-decoration-color:var(--muted)}
+.acts{display:flex;align-items:center;gap:20px}
+.empty{margin:36px 0;color:var(--muted);font-size:15px;line-height:1.6}
+/* Dock: one dark pill to cook, a quiet one for orders. */
+.dock{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;padding:22px 24px max(18px,env(safe-area-inset-bottom));background:linear-gradient(to bottom,transparent,var(--bg) 40%)}
+.pill{padding:14px 22px;background:var(--surface);border:1px solid var(--line);border-radius:99px;font-size:15px;font-weight:500;cursor:pointer;text-align:center}
+.pill.primary{background:var(--ink);border-color:var(--ink);color:var(--bg)}.pill:disabled{opacity:.35;cursor:default}.pill.small{padding:9px 16px;font-size:14px}
+.dock .pill.primary{flex:0 1 280px}.pill.wide{display:block;width:100%;margin-top:22px}.pill.file{position:relative;overflow:hidden}.pill.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.messages{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 92px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;width:min(92%,440px);pointer-events:none;z-index:5}
+.msg{display:flex;gap:14px;align-items:center;padding:10px 16px;background:var(--ink);color:var(--bg);border-radius:99px;font-size:14px;animation:fade 4s ease forwards;pointer-events:auto}
+.msg.level{background:var(--accent);color:#fff}.msg button{background:none;border:0;color:inherit;opacity:.7;font-size:14px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+@keyframes fade{0%{opacity:0;transform:translateY(6px)}8%,80%{opacity:1;transform:none}100%{opacity:0}}
+/* Sheets rise from the bottom on a phone. */
+dialog{width:min(100%,520px);max-height:92dvh;overflow:auto;margin:auto auto 0;padding:24px 24px max(26px,env(safe-area-inset-bottom));background:var(--bg);color:var(--ink);border:0;border-radius:22px 22px 0 0;box-shadow:0 -10px 40px #0002}
+@media(min-width:600px){dialog{margin:auto;border-radius:22px}}
+dialog::backdrop{background:#0004;backdrop-filter:blur(2px)}
+.head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+h2{margin:0;font:400 34px/1.1 var(--serif);letter-spacing:-.01em}
+.close{background:none;border:0;color:var(--muted);font-size:15px;cursor:pointer}
+dialog .caption{margin:26px 0 8px}.muted{color:var(--soft);font-size:15px;margin:8px 0}
+.figure{margin:10px 0 2px;font:400 56px/1 var(--serif);letter-spacing:-.02em}.figure.is-negative{color:var(--accent)}
+label{display:block;margin-top:18px;font-size:13px;color:var(--muted)}
+dialog input:not([type=checkbox]):not([type=file]),dialog select{display:block;width:100%;margin-top:6px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;font-size:16px;color:var(--ink);appearance:none;-webkit-appearance:none}
+dialog select{background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238d8b84' fill='none' stroke-width='1.4'/%3E%3C/svg%3E") no-repeat right 14px center}
+input:focus,select:focus{outline:2px solid var(--ink);outline-offset:-1px}
+.search{margin-top:14px!important;font-size:20px!important;padding:14px 16px!important}
+.results{margin-top:6px;max-height:40dvh;overflow:auto}
+.result{display:flex;align-items:baseline;gap:12px;width:100%;padding:13px 4px;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;cursor:pointer}
+.result .name{flex:1;font-size:16px}.result small{display:block;color:var(--muted);font-size:13px;margin-top:2px}.result .meta{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.result.is-on{background:var(--surface);border-radius:12px;border-bottom-color:transparent;padding-left:12px;padding-right:12px}
+.result-group{margin:18px 0 2px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}
+.check{display:flex;gap:12px;align-items:flex-start;color:var(--ink);font-size:15px}.check input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--ink)}.check small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.error{color:var(--accent);font-size:14px;min-height:1.2em;margin:12px 0 0}
+.rows .line{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--line);font-size:15px}
+.rows .line small{display:block;color:var(--muted);font-size:13px;margin-top:1px}.rows .grow{flex:1}.rows .amount{white-space:nowrap;font-variant-numeric:tabular-nums}.rows input[type=checkbox]{width:20px;height:20px;accent-color:var(--ink)}
+.good{color:var(--ink)}.bad{color:var(--accent)}
+[hidden]{display:none!important}
+@media(max-width:380px){.level{font-size:104px}.purse #purseAmount{font-size:32px}.page{padding-left:20px;padding-right:20px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* The level-up: the page clears to one numeral rolling from the old level to the new, a line drawn under it. */
+.ding{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:var(--bg);cursor:pointer;animation:ding-in .45s ease both}
+.ding.is-leaving{animation:ding-out .5s ease both}
+@keyframes ding-in{from{opacity:0}to{opacity:1}}@keyframes ding-out{to{opacity:0}}
+.ding-inner{text-align:center;padding:0 32px}
+.ding-num{position:relative;height:200px;width:340px;max-width:90vw;margin:10px auto 0;overflow:hidden;font:400 200px/1 var(--serif);letter-spacing:-.04em;font-variant-numeric:lining-nums}
+.ding-num span{position:absolute;inset:0;display:block}
+.ding-num .old{animation:roll-out .7s cubic-bezier(.6,0,.3,1) .35s both}.ding-num .new{animation:roll-in .7s cubic-bezier(.2,.7,.2,1) .35s both}
+@keyframes roll-out{to{transform:translateY(-70%);opacity:0}}@keyframes roll-in{from{transform:translateY(70%);opacity:0}to{transform:none;opacity:1}}
+.ding-line{width:220px;height:2px;margin:18px auto 22px;background:var(--track);overflow:hidden}.ding-line i{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;animation:draw .9s cubic-bezier(.2,.7,.2,1) .8s both}
+@keyframes draw{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.ding-fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.ding-inner{position:relative}
+/* The dialogue, the way an old MMO's chat box gives way to it: skill icon left, two lines, a blue line to continue. */
+.ding-dialog{display:flex;gap:16px;align-items:center;max-width:380px;margin:0 auto;text-align:left;animation:rise .6s ease 1.05s both}
+.slot.lg{width:56px;height:56px;border-radius:7px}.slot.lg::after{border-radius:7px}
+.ding-title{margin:0;font-size:16px;font-weight:500;line-height:1.35}.ding-sub{margin:3px 0 0;font-size:16px;color:var(--soft)}
+.ding-note{margin:6px 0 0;font:400 19px/1.2 var(--serif)}.ding-note:empty{display:none}
+.ding-continue{margin:10px 0 0;color:#2b44d9;font-size:15px;font-weight:500;animation:blink 1.6s ease-in-out 2.4s infinite}
+@media(prefers-color-scheme:dark){.ding-continue{color:#93a3ff}}
+@keyframes blink{50%{opacity:.45}}
+.ding-hint{display:none}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.bar.is-full i{width:100%!important;transition:width .45s cubic-bezier(.4,0,.2,1)}
+@media(prefers-reduced-motion:reduce){.ding-num .old{display:none}.ding-num .new,.ding-line i,.ding-dialog,.ding-continue{animation:none}.ding-fx{display:none}}
+
+/* Category icons as inventory slots: full colour, a hard dark edge, a faint bevel and a vignette, like a classic MMO bag. */
+.slot{position:relative;flex:none;width:38px;height:38px;border-radius:5px;overflow:hidden;background:#000;box-shadow:0 0 0 1px #0b0b0a,0 1px 3px #0003;align-self:center}
+.slot svg{display:block;width:100%;height:100%}
+.slot::after{content:'';position:absolute;inset:0;border-radius:5px;box-shadow:inset 0 0 0 1px #ffffff2e,inset 0 1px 0 #ffffff40,inset 0 0 10px #000a;pointer-events:none}
+.slot.sm{width:32px;height:32px;border-radius:4px}.slot.sm::after{border-radius:4px}
+.row{align-items:center}.row .name{line-height:1.25}
+.result{align-items:center}
+.rows .line .slot{margin-right:2px}
+@media(prefers-color-scheme:dark){.slot{box-shadow:0 0 0 1px #000,0 0 0 2px #2c2b28}}
+#previewDing{display:block;margin-top:14px;font-size:14px}
+
+/* Two-way switch in the Spent sheet: takeaway or groceries. */
+.seg{display:flex;gap:4px;margin-top:14px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:99px}
+.seg button{flex:1;padding:9px 0;background:none;border:0;border-radius:99px;color:var(--muted);font-size:15px;font-weight:500;cursor:pointer}.seg button.is-on{background:var(--ink);color:var(--bg)}
+.hint{display:block;margin-top:6px;font-size:13px;color:var(--muted)}#logShop{margin-top:18px}
