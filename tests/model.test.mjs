@@ -126,7 +126,7 @@ test('the month picture: a Monday-first grid with each day\u2019s meals in meal 
   assert.equal(monthDays(s,'2026-02','2026-10-26').rows,5);   // February 2026 starts on a Sunday, so it spills into a fifth row
 });
 
-import {setHabit,dayMeals,deliveryFreeDays,checkIn,checkInDue,groceriesFor,defaultHabit} from '../model.js';
+import {setHabit,dayMeals,checkIn,checkInDue,groceriesFor,defaultHabit,tonight,tonightList,dinnerSettled,weekRecap,recapWeek} from '../model.js';
 const assuming=(from='2026-10-20',over={})=>setHabit(setBaseline(initialState(),{monthly:'247',orders:11,since:'2026-10-01',groceries:'200'}),{mode:'assume',from,...over});
 test('assume home-cooked: every finished day since the start counts its usual meals; today waits until it is over',()=>{
   const s=assuming();const sum=summary(s,'2026-10-23');   // 20, 21, 22 are finished; 23 is today
@@ -145,11 +145,27 @@ test('a takeaway replaces dinner, a logged dish fills its slot, and three a day 
   const sum=summary(s,'2026-10-23'),on22=id=>id.startsWith('assumed:2026-10-22')||s.events.some(e=>e.id===id&&e.date==='2026-10-22');
   assert.equal(dayMeals(s,'2026-10-22','2026-10-23').items.length,4);assert.equal([...sum.counted].filter(on22).length,3);
 });
-test('delivery-free days count finished days since the last unplanned takeaway; planned treats keep the run',()=>{
-  let s=assuming('2026-10-10');assert.equal(deliveryFreeDays(s,'2026-10-20'),10);
-  s=logOrdered(s,{amount:'25',date:'2026-10-15',planned:true},{now:1,today:'2026-10-20'}).state;assert.equal(deliveryFreeDays(s,'2026-10-20'),10);
-  s=logOrdered(s,{amount:'25',date:'2026-10-17'},{now:2,today:'2026-10-20'}).state;assert.equal(deliveryFreeDays(s,'2026-10-20'),2);assert.equal(deliveryFreeDays(s,'2026-10-17'),0);
-  assert.equal(summary(s,'2026-10-20').deliveryFree,2);
+test('tonight: one dish from your book, not made lately, everything in and planned first; quick ideas when the book is empty',()=>{
+  let s=assuming('2026-10-01');const T2='2026-10-22',at=(st,dish,date,i)=>logCooked(st,{dish,date},{now:i,today:T2}).state;
+  const idea=tonight(s,T2);assert.ok(idea.idea&&idea.minutes<=30);assert.notEqual(tonight(s,'2026-10-23').name,idea.name);
+  s=at(s,'Dal','2026-10-10',1);s=at(s,'Dal','2026-10-12',2);s=at(s,'Dal','2026-10-14',3);s=at(s,'Porridge','2026-10-19',4);s=at(s,'Risotto','2026-10-21',5);
+  assert.deepEqual(tonightList(s,T2).map(d=>d.name),['Dal','Porridge','Risotto']);   // favourites first; made yesterday goes last
+  assert.equal(tonight(s,T2,1).name,'Porridge');assert.equal(tonight(s,T2,3).name,'Dal');assert.ok(!tonight(s,T2).idea);
+  for(const i of findDish(s,'Porridge').ingredients)s=setHave(s,i,true);assert.equal(tonight(s,T2).name,'Porridge');   // everything in
+  s=togglePick(s,'Dal',T2);for(const i of findDish(s,'Dal').ingredients)s=setHave(s,i,true);assert.equal(tonight(s,T2).name,'Dal');   // in, and planned
+  assert.ok(!dinnerSettled(s,T2));s=logCooked(s,{dish:'Porridge',meal:'breakfast',date:T2},{now:6,today:T2}).state;assert.ok(!dinnerSettled(s,T2));
+  assert.ok(dinnerSettled(logCooked(s,{dish:'Dal',meal:'dinner',date:T2},{now:7,today:T2}).state,T2));assert.ok(dinnerSettled(logOrdered(s,{amount:'20',date:T2},{now:8,today:T2}).state,T2));
+});
+test('the week in review: last week once it is over, its days, meals, takeaways against usual, money kept and levels',()=>{
+  let s=assuming('2026-10-01');   // started on Thursday 1 October
+  assert.equal(recapWeek(s,'2026-10-04'),null);assert.equal(recapWeek(s,'2026-10-05'),'2026-09-28');assert.equal(recapWeek(initialState(),'2026-10-05'),null);
+  let w=weekRecap(s,'2026-09-28','2026-10-05');
+  assert.deepEqual(w.days.map(d=>[d.tracked,d.meals.length]),[[false,0],[false,0],[false,0],[true,3],[true,3],[true,3],[true,3]]);
+  assert.equal(w.counted,4);assert.equal(w.cooked,12);assert.equal(w.orders,0);assert.equal(w.usual,5768);assert.equal(w.groceries,2637);assert.equal(w.kept,5768-2637);
+  assert.equal(w.xp,220+220+330+330);assert.equal(w.levelFrom,1);assert.equal(w.levelTo,levelFor(1100));assert.ok(Math.abs(w.usualOrders-44/31)<1e-9);
+  s=logOrdered(s,{amount:'25',date:'2026-10-03'},{now:1,today:'2026-10-05'}).state;s=logCooked(s,{dish:'Dal',date:'2026-10-05'},{now:2,today:'2026-10-07'}).state;   // the week after does not count
+  w=weekRecap(s,'2026-09-28','2026-10-07');assert.equal(w.cooked,11);assert.equal(w.orders,1);assert.equal(w.kept,5768-2637-2500);assert.equal(w.xp,220+220+180+330);
+  assert.equal(w.days[5].orders.length,1);
 });
 test('groceries: a weekly estimate for days no logged shop covers, the usual grocery month when no estimate is set',()=>{
   let s=assuming('2026-10-01',{groceriesWeekly:'70'});

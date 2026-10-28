@@ -124,3 +124,8 @@ input:focus,select:focus{outline:2px solid var(--ink);outline-offset:-1px}
 .notice .caption{margin:0 0 6px}.notice-line{margin:0;font-size:16px;line-height:1.45}.notice .link{margin-top:10px}
 .notice-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .field-label{margin:18px 0 0;font-size:13px;color:var(--muted)}#mealsSeg{margin-top:6px}.small{font-size:14px}#modeHint{margin-top:10px}
+
+/* Tonight: one dinner idea from your book, its name in the serif, two ways on. */
+.tonight{margin-top:40px}.tonight-dish{margin:8px 0 0;font:400 34px/1.1 var(--serif);letter-spacing:-.01em}.tonight .sub{margin-top:6px}.tonight .acts{margin-top:16px}
+/* The week in review: the seven days as blocks, two lines of numbers, one line in Cook99's voice. */
+.recap .month-head .link{padding:0;font-size:14px}.recap .link:disabled{opacity:.4}.recap .chart{margin:10px 0 12px}.recap .notice-line{font-size:15px}.recap-voice{margin:10px 0 0;font:400 22px/1.25 var(--serif)}

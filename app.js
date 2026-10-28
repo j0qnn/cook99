@@ -1,5 +1,5 @@
-import {blocks,spendingMeter} from './charts.js';
-import {KEY,CURRENCIES,CATEGORIES,initialState,dayKey,setBaseline,logCooked,logOrdered,logGroceries,GROCERY_SPANS,lastGrocerySpan,removeEvent,summary,monthDays,monthOf,setHabit,checkIn,checkInDue,daysBetween,xpInfo,xpAtLevel,MEALS,mealXp,mealFor,findDish,book,searchDishes,saveRecipe,setHave,hasIngredient,isReady,picksFor,togglePick,clearPicks,shoppingList,weekStart,weeks,plannedUsed,validateState,load,persist} from './model.js';
+import {blocks,paintBlocks,spendingMeter} from './charts.js';
+import {KEY,CURRENCIES,CATEGORIES,initialState,dayKey,setBaseline,logCooked,logOrdered,logGroceries,GROCERY_SPANS,lastGrocerySpan,removeEvent,summary,monthDays,monthOf,setHabit,checkIn,checkInDue,daysBetween,tonight,tonightList,dinnerSettled,weekRecap,recapWeek,xpInfo,xpAtLevel,MEALS,mealXp,mealFor,findDish,book,searchDishes,saveRecipe,setHave,hasIngredient,isReady,picksFor,togglePick,clearPicks,shoppingList,weekStart,weeks,plannedUsed,validateState,load,persist} from './model.js';
 const $=id=>document.getElementById(id);
 const set=(id,text)=>{$(id).textContent=text;};
 const el=(tag,className,text)=>{const n=document.createElement(tag);if(className)n.className=className;if(text!==undefined)n.textContent=text;return n;};
@@ -35,8 +35,8 @@ function render(){
   $('barFill').style.width=`${info.fraction*100}%`;$('bar').setAttribute('aria-valuenow',String(info.pct));$('bar').classList.toggle('is-rested',s.rested);
   const picks=picksFor(state).length;set('weekButton',picks?`Week · ${picks}`:'Week');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('is-on',t.dataset.view===view));
-  renderMonth();renderList();$('cookButton').disabled=loadError;
-  $('checkin').hidden=!checkInDue(state)||!$('visit').hidden;
+  const recapOn=renderRecap();renderTonight();renderMonth(s);renderList();$('cookButton').disabled=loadError;
+  $('checkin').hidden=recapOn||!checkInDue(state)||!$('visit').hidden;
   if(state.habit?.checked||state.habit?.from)set('checkinLine',`Any takeaway since ${shortDate(state.habit.checked||state.habit.from)} you haven’t logged?`);
   saveVisit(s);
 }
@@ -52,7 +52,7 @@ function showVisit(){
   const when=days===1?'yesterday':days<7?new Intl.DateTimeFormat(undefined,{weekday:'long'}).format(new Date(`${last.date}T12:00:00`)):shortDate(last.date);
   set('visitTitle',`Since ${when}`);
   set('visitLine',[levels>0?`+${plural(levels,'level')}`:null,`+${xp.toLocaleString()} xp`,meals>0?`${plural(meals,'home meal')}`:null,state.baseline?`${kept>=0?'':'−'}${money(Math.abs(kept))} ${kept>=0?'kept':'over'}`:null].filter(Boolean).join(' · '));
-  $('visit').hidden=false;$('checkin').hidden=true;
+  if($('recap').hidden){$('visit').hidden=false;$('checkin').hidden=true;}   // on the first visit of a week the review says it instead
   if(levels>0)setTimeout(()=>levelUp(last.level,s.level,s),700);
 }
 $('visitDone').onclick=()=>{$('visit').hidden=true;render();};
@@ -61,18 +61,96 @@ $('checkinYes').onclick=()=>{openSpent('takeaway');};
 // ---------- the month as a little landscape: one slab per meal, green cooked, tomato takeaway ----------
 const longDate=k=>new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short'}).format(new Date(`${k}T12:00:00`));
 let monthView=null,weekView=null,firstPaint=true;
-function renderMonth(){
+// What the month and the week say: home meals, and takeaways against your usual by now. Counts that only add up; there
+// is no run of days to break, so one takeaway is one tomato slab, not a reset to zero.
+const takeaways=(n,usual)=>`${n?plural(n,'takeaway'):'no takeaway'}${usual?`, usually ${usual}`:''}`;
+const slabs=(meals,orders)=>[...meals.map(()=>({kind:'home',h:7})),...orders.map(()=>({kind:'out',h:7}))];
+const dayTip=(date,meals,orders,empty)=>({title:longDate(date),lines:meals.length||orders.length?[...meals.map(e=>`${mealLabel(e.meal)} · ${e.assumed?'home-cooked':e.dish}`),...orders.map(o=>`Takeaway · ${exact(o.amount)}${o.planned?' (planned)':''}`)]:[empty]});
+function renderMonth(s){
   const today=dayKey(),m=monthDays(state,monthOf(today),today),meals=m.days.reduce((a,d)=>a+d.meals.length,0),outs=m.days.reduce((a,d)=>a+d.orders.length,0);
   set('monthTitle',new Intl.DateTimeFormat(undefined,{month:'long'}).format(new Date(`${today}T12:00:00`)));
-  const assume=state.habit?.mode==='assume'&&state.habit.from,free=summary(state,today).deliveryFree;
-  set('monthLine',assume?`${plural(meals,'home meal')} · ${plural(free,'day')} delivery-free`:`${plural(meals,'meal')} cooked · ${plural(outs,'takeaway')}`);
-  const cells=m.days.map(d=>({col:d.col,row:d.row,today:d.isToday,ahead:d.ahead,
-    segments:[...d.meals.map(()=>({kind:'home',h:7})),...d.orders.map(()=>({kind:'out',h:7}))],
-    tip:{title:longDate(d.date),lines:d.ahead?['Still to come']:d.meals.length||d.orders.length?[...d.meals.map(e=>`${mealLabel(e.meal)} · ${e.assumed?'home-cooked':e.dish}`),...d.orders.map(o=>`Takeaway · ${exact(o.amount)}${o.planned?' (planned)':''}`)]:['Nothing logged']}}));
+  set('monthLine',`${plural(meals,'home meal')} · ${takeaways(outs,state.baseline?Math.round(s.thisMonth.usualOrders):0)}`);
+  const cells=m.days.map(d=>({col:d.col,row:d.row,today:d.isToday,ahead:d.ahead,segments:slabs(d.meals,d.orders),
+    tip:d.ahead?{title:longDate(d.date),lines:['Still to come']}:dayTip(d.date,d.meals,d.orders,'Nothing logged')}));
   monthView?.destroy();
   monthView=blocks($('monthChart'),{cols:7,rows:m.rows,cells,rise:firstPaint,label:`${$('monthTitle').textContent}: ${plural(meals,'home meal')} and ${plural(outs,'takeaway')} so far. Each day shows one slab per meal.`});
   firstPaint=false;
 }
+// ---------- tonight: one dinner idea from your own book ----------
+let tonightSkip=0;
+const ago=k=>{const n=daysBetween(k,dayKey());return n<=0?'today':n===1?'yesterday':n<14?`${n} days ago`:shortDate(k);};
+function renderTonight(){
+  const today=dayKey(),list=state.baseline&&!loadError&&!dinnerSettled(state,today)?tonightList(state,today):[],d=list[tonightSkip%Math.max(1,list.length)];
+  $('tonight').hidden=!d;if(!d)return;
+  set('tonightDish',d.name);$('tonightOther').hidden=list.length<2;
+  set('tonightMeta',(d.idea?['An idea',d.minutes?`${d.minutes} min`:null,d.ingredients.slice(0,3).join(', ')]:[d.ready?'Everything in':null,d.minutes?`${d.minutes} min`:null,`last made ${ago(d.last)}`]).filter(Boolean).join(' · '));
+}
+$('tonightOther').onclick=()=>{tonightSkip++;renderTonight();};
+$('tonightCook').onclick=()=>{const d=tonight(state,dayKey(),tonightSkip);if(d&&cookDish(d.name,dayKey(),'dinner'))tonightSkip=0;};
+
+// ---------- the week in review: on the first visit after a week ends, until you close it ----------
+const RECAP_KEY='cook99.recap';   // a note on this phone of the last week whose review you closed; not part of the record
+// The week in Cook99's voice. A takeaway week gets no lecture: nothing earned is ever taken back.
+const RECAP_LINES={
+  clean:['Not one delivery fee all week.','The delivery apps had a quiet week.','A whole week out of your own kitchen.'],
+  treat:['One planned treat, and everything else from your own kitchen.','A planned treat, enjoyed. The rest was yours.'],
+  fewer:['Less takeaway than your usual week. That is the whole trick.','Down on your usual. Keep it boring.','Fewer orders than usual, more meals of your own.'],
+  usual:['Some takeaway this week. Nothing you earned went anywhere.','Weeks like this happen. The kitchen is still yours.','A takeaway week. Your level stays, and this week is a fresh pan.']};
+function recapLine(w){
+  const list=!w.orders?RECAP_LINES.clean:!w.unplanned?RECAP_LINES.treat:w.orders<Math.round(w.usualOrders)?RECAP_LINES.fewer:RECAP_LINES.usual;
+  return list[Number(w.start.slice(8,10))%list.length];
+}
+let recapView=null,recapShown='',shareImage=null;
+const weekDates=w=>new Intl.DateTimeFormat(undefined,{day:'numeric',month:'short'}).formatRange(new Date(`${w.start}T12:00:00`),new Date(`${w.end}T12:00:00`));   // 19–25 Oct
+function renderRecap(){
+  const start=loadError?null:recapWeek(state);let seen='';try{seen=store.getItem(RECAP_KEY)||'';}catch{}
+  if(!start||seen===start){$('recap').hidden=true;recapView?.destroy();recapView=null;recapShown='';return false;}
+  const w=weekRecap(state,start),line=recapLine(w),usual=Math.round(w.usualOrders);
+  const meals=`${plural(w.cooked,'home meal')} · ${takeaways(w.orders,usual)}`,levels=w.levelTo>w.levelFrom?`Cooking ${w.levelFrom} → ${w.levelTo}`:`Cooking ${w.levelTo}`;
+  const moneyLine=`${w.kept>=0?`${money(w.kept)} kept`:`${money(-w.kept)} over`} · ${levels}`,sig=JSON.stringify([start,meals,moneyLine,w.days.map(d=>[d.meals.length,d.orders.length])]);
+  $('recap').hidden=false;if(sig===recapShown)return true;
+  const first=!recapShown;recapShown=sig;
+  set('recapDates',weekDates(w));set('recapMeals',meals);set('recapMoney',moneyLine);set('recapVoice',line);
+  const cells=w.days.map((d,i)=>({col:i,row:0,ahead:!d.tracked,segments:slabs(d.meals,d.orders),tip:d.tracked?dayTip(d.date,d.meals,d.orders,'Nothing logged'):{title:longDate(d.date),lines:['Before you started']}}));
+  recapView?.destroy();
+  recapView=blocks($('recapChart'),{cols:7,rows:1,cells,cell:36,inset:7,theta:18,range:[18,18],phi:34,rise:first,label:`Week of ${shortDate(w.start)}: ${meals}.`});
+  shareImage=null;$('recapShare').disabled=true;
+  weekImage(w,{meals,moneyLine:w.kept>=0?moneyLine:levels,line,cells}).then(img=>{if(recapShown===sig){shareImage=img;$('recapShare').disabled=false;}}).catch(()=>{});
+  return true;
+}
+$('recapDone').onclick=()=>{try{store.setItem(RECAP_KEY,recapWeek(state)||'');}catch{}if(state.habit?.mode==='assume'&&state.habit.from)commit(checkIn(state));else render();};   // the review doubles as the week's check-in
+$('recapAdd').onclick=()=>{const start=recapWeek(state);openSpent('takeaway',start?weekRecap(state,start).end:dayKey());};
+// Sharing: the picture is drawn when the review appears, so the share sheet opens straight from the tap.
+$('recapShare').onclick=async()=>{
+  if(!shareImage)return;const {file,url}=shareImage;
+  if(native({type:'shareImage',name:file.name,data:url}))return;
+  try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file]});return;}}catch(err){if(err?.name==='AbortError')return;}
+  const a=document.createElement('a');a.href=url;a.download=file.name;a.click();
+};
+// The picture: always on paper, whatever the phone's theme, with the same blocks, numbers and line as the card (money
+// only when the week kept some: a picture to share is not a statement).
+const PAPER={bg:'#f5f4f0',ink:'#161614',soft:'#4a4944',muted:'#8d8b84',tile:'#e7e5df',line:'#cfccc4',home:'#24946b',out:'#e4572e'};
+const mixHex=(a,b,t)=>{const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),x=rgb(a),y=rgb(b);return `rgb(${x.map((v,i)=>Math.round(v+(y[i]-v)*t)).join(',')})`;};
+const shades=c=>({f:c,t:mixHex(c,'#ffffff',.32),r:mixHex(c,'#000000',.28)});
+async function weekImage(w,{meals,moneyLine,line,cells}){
+  await Promise.all(['400 100px Instrument','600 40px Geist','500 40px Geist','400 40px Geist'].map(f=>document.fonts.load(f)));
+  const W=1080,H=1350,pad=96,canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;const ctx=canvas.getContext('2d');
+  const text=(str,x,y,font,colour,align='left')=>{ctx.font=font;ctx.fillStyle=colour;ctx.textAlign=align;ctx.fillText(str,x,y);return ctx.measureText(str).width;};
+  ctx.fillStyle=PAPER.bg;ctx.fillRect(0,0,W,H);
+  text('Cook99',pad,pad+28,'600 36px Geist',PAPER.ink);text(weekDates(w),W-pad,pad+28,'400 34px Geist',PAPER.muted,'right');
+  const big=text(String(w.cooked),pad-10,pad+380,'400 330px Instrument',PAPER.ink);
+  text(w.cooked===1?'home meal':'home meals',pad+big+26,pad+316,'500 40px Geist',PAPER.ink);text('this week',pad+big+26,pad+368,'400 40px Geist',PAPER.muted);
+  text(meals.split(' · ')[1],pad,pad+470,'400 40px Geist',PAPER.soft);text(moneyLine,pad,pad+524,'400 40px Geist',PAPER.soft);
+  const top=pad+600,h=paintBlocks(ctx,{cols:7,rows:1,cells,cell:36,inset:7,theta:18,phi:34,x:pad,y:top,width:W-pad*2,colours:{tile:PAPER.tile,ahead:PAPER.line,home:shades(PAPER.home),out:shades(PAPER.out)}});
+  let x=pad;const key=(colour,label)=>{ctx.fillStyle=colour;ctx.fillRect(x,top+h+44,22,22);x+=36+text(label,x+36,top+h+64,'400 28px Geist',PAPER.soft)+40;};
+  key(PAPER.home,'Cooked at home');key(PAPER.out,'Takeaway');
+  ctx.font='400 58px Instrument';const words=line.split(' '),rows=[''];for(const word of words){const next=rows.at(-1)?`${rows.at(-1)} ${word}`:word;if(ctx.measureText(next).width>W-pad*2&&rows.at(-1))rows.push(word);else rows[rows.length-1]=next;}
+  rows.forEach((r,i)=>text(r,pad,H-pad-60-(rows.length-1-i)*66,'400 58px Instrument',PAPER.ink));
+  text('Order less. Cook more.',pad,H-pad+4,'400 30px Geist',PAPER.muted);
+  const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
+  return {file:new File([blob],`cook99-week-${w.start}.png`,{type:'image/png'}),url:canvas.toDataURL('image/png')};
+}
+
 function renderList(){
   const box=$('list'),week=new Set(picksFor(state).map(d=>d.name)),all=book(state);box.replaceChildren();
   const list=all.filter(d=>view==='all'||(view==='ready'&&isReady(state,d))||(view==='quick'&&isReady(state,d)&&(d.minutes??99)<=20)||(view==='week'&&week.has(d.name)));
@@ -224,8 +302,8 @@ function setKind(kind){
   set('orderNoteLabel',shop?'Shop':'What or where');$('orderNote').placeholder=shop?'Rimi, optional':'optional';$('orderAmount').placeholder=shop?'84.20':'23.50';
   set('orderSave',shop?'Log groceries':'Log takeaway');
 }
-function openSpent(kind='takeaway'){
-  $('orderAmount').value='';$('orderNote').value='';$('orderPlanned').checked=false;$('orderDate').value=dayKey();$('orderDate').max=dayKey();$('orderDate').min=state.baseline?.since||'';
+function openSpent(kind='takeaway',date=dayKey()){
+  $('orderAmount').value='';$('orderNote').value='';$('orderPlanned').checked=false;$('orderDate').value=date;$('orderDate').max=dayKey();$('orderDate').min=state.baseline?.since||'';
   $('groceryDays').replaceChildren(...GROCERY_SPANS.map(x=>option(String(x.days),x.label)));$('groceryDays').value=String(lastGrocerySpan(state));
   plannedState();setKind(kind);$('orderError').textContent='';$('orderDialog').showModal();$('orderAmount').focus();
 }
@@ -312,6 +390,9 @@ $('cookButton').onclick=openCook;
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 window.addEventListener('storage',e=>{if(e.key!==KEY)return;try{state=load(store);loadError=false;undo=null;render();}catch{loadError=true;render();}});
 holdVisit=true;render();holdVisit=false;showVisit();saveVisit(summary(state));
+// An app left open in the background wakes on a new day: a fresh dinner idea, the week's review, what happened since.
+let shownDay=dayKey();
+document.addEventListener('visibilitychange',()=>{if(document.hidden||shownDay===dayKey())return;shownDay=dayKey();tonightSkip=0;holdVisit=true;render();holdVisit=false;showVisit();saveVisit(summary(state));});
 if(loadError)message('Saved data could not be read. Open the Ledger, then Settings, to export it.');
 else if(!state.baseline)$('welcomeDialog').showModal();
 // Installed to the Home Screen: work offline, and ask the browser to keep this app's data rather than clear it when space runs low.

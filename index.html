@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)"><meta name="description" content="Order less, cook more. Level Cooking to 99."><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Cook99"><link rel="stylesheet" href="./styles.css?v=16"><title>Cook99</title></head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)"><meta name="description" content="Order less, cook more. Level Cooking to 99."><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Cook99"><link rel="stylesheet" href="./styles.css?v=17"><title>Cook99</title></head>
 <body><main class="page">
   <header class="top"><span class="mark">Cook99</span><nav><button id="weekButton" class="link" type="button">Week</button><button id="ledgerButton" class="link" type="button">Ledger</button></nav></header>
   <section class="hero" aria-label="Cooking level">
@@ -10,6 +10,13 @@
   <section id="visit" class="notice" hidden aria-live="polite"><p class="caption" id="visitTitle">Since your last visit</p><p class="notice-line" id="visitLine"></p><button id="visitDone" class="link" type="button">Nice</button></section>
   <section id="checkin" class="notice" hidden><p class="notice-line" id="checkinLine">Any takeaway this week you haven’t logged?</p>
     <div class="notice-acts"><button id="checkinNo" class="pill primary small" type="button">No, all home-cooked</button><button id="checkinYes" class="pill small" type="button">Add one</button></div></section>
+  <section id="recap" class="notice recap" hidden aria-labelledby="recapTitle"><div class="month-head"><p class="caption" id="recapTitle">Last week · <span id="recapDates"></span></p><button id="recapShare" class="link small" type="button" disabled>Share</button></div>
+    <div id="recapChart" class="chart"></div>
+    <p class="notice-line" id="recapMeals"></p><p class="notice-line" id="recapMoney"></p><p class="recap-voice" id="recapVoice"></p>
+    <div class="notice-acts"><button id="recapDone" class="pill primary small" type="button">Looks right</button><button id="recapAdd" class="pill small" type="button">Add a takeaway</button></div></section>
+  <section id="tonight" class="tonight" hidden aria-labelledby="tonightTitle"><p class="caption" id="tonightTitle">Tonight</p>
+    <p class="tonight-dish" id="tonightDish"></p><p class="sub" id="tonightMeta"></p>
+    <div class="acts"><button id="tonightCook" class="pill small" type="button">Cook this</button><button id="tonightOther" class="link" type="button">Something else</button></div></section>
   <section class="month" aria-labelledby="monthTitle">
     <div class="month-head"><p class="caption" id="monthTitle">This month</p><p class="sub" id="monthLine"></p></div>
     <div id="monthChart" class="chart"></div>
@@ -86,4 +93,4 @@
   <p class="caption">Your data</p><p class="muted">Kept in this browser only. Export now and then.</p>
   <div class="grid"><button type="button" id="exportButton" class="pill">Export</button><label class="pill file">Import<input id="importFile" type="file" accept="application/json,.json"></label></div>
   <button type="button" id="resetButton" class="link danger">Start over</button></form></dialog>
-<script type="module" src="./app.js?v=24"></script></body></html>
+<script type="module" src="./app.js?v=25"></script></body></html>

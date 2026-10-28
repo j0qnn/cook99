@@ -219,12 +219,6 @@ export function groceriesFor(state,from,to){
     for(let d=[from,state.habit.from].sort().at(-1);d<=to;d=addDays(d,1))if(!shops.some(e=>e.date<=d&&d<=addDays(e.date,e.days-1)))estimated+=daily;}
   return {logged,estimated};
 }
-// Days in a row without an unplanned takeaway, counting finished days only. Planned treats do not break it.
-export function deliveryFreeDays(state,today=dayKey()){
-  const start=state.habit?.from||state.baseline?.since;if(!start)return 0;
-  const last=state.events.filter(e=>e.type==='ordered'&&!e.planned).map(e=>e.date).sort().at(-1);
-  const from=last&&last>=start?addDays(last,1):start;return Math.max(0,daysBetween(from,today));
-}
 export function setHabit(state,{mode,meals,from,groceriesWeekly}){
   const h={...defaultHabit(),...state.habit};
   if(mode!==undefined){if(!['assume','log'].includes(mode))throw new Error('Choose how days are counted.');h.mode=mode;}
@@ -270,8 +264,42 @@ export function summary(state,today=dayKey()){
   const level=levelFor(xp),thisMonth=months.at(-1)||monthReport(state,monthOf(today),today),thisWeek=weekReport(state,weekStart(today),today);
   const unplannedMonth=state.events.filter(e=>e.type==='ordered'&&!e.planned&&monthOf(e.date)===monthOf(today)).length;
   return {months,thisMonth,thisWeek,unplannedMonth,keptTotal:months.reduce((a,m)=>a+m.kept,0),xp,level,counted,gains,resisted,cookedTotal,assumedTotal,ordersTotal,spentTotal,groceriesTotal,
-    deliveryFree:deliveryFreeDays(state,today),streak:streakNow,rested:nextStreak>=RESTED_FROM,cookedToday,averageOrder:state.baseline?.orders?Math.round(state.baseline.monthly/state.baseline.orders):0};
+    streak:streakNow,rested:nextStreak>=RESTED_FROM,cookedToday,averageOrder:state.baseline?.orders?Math.round(state.baseline.monthly/state.baseline.orders):0};
 }
+// ---------- tonight: one dinner idea from your own book ----------
+export const RECENT_DAYS=3;   // a dish made in the last three days waits its turn
+// The order "Something else" walks through: dishes not made lately with everything in come first, this week's plan
+// before the rest, favourites before the rarely made; anything made lately goes last. An empty book gets quick ideas
+// from the catalogue, a different one first each day.
+export function tonightList(state,today=dayKey()){
+  const mine=book(state);
+  if(!mine.length){const ideas=catalogue(state).filter(d=>(d.minutes??99)<=30),k=dayNumber(today)%Math.max(1,ideas.length);return [...ideas.slice(k),...ideas.slice(0,k)].map(d=>({...d,idea:true,ready:isReady(state,d)}));}
+  const planned=new Set(picksFor(state,today).map(d=>key(d.name)));
+  const tier=d=>{const fresh=daysBetween(d.last,today)>=RECENT_DAYS,ready=isReady(state,d),plan=planned.has(key(d.name));return !fresh?4:ready&&plan?0:ready?1:plan?2:3;};
+  return mine.map(d=>({...d,idea:false,ready:isReady(state,d),tier:tier(d)})).sort((a,b)=>a.tier-b.tier||b.cooked-a.cooked||a.last.localeCompare(b.last)||a.name.localeCompare(b.name));
+}
+export const tonight=(state,today=dayKey(),skip=0)=>{const list=tonightList(state,today);return list.length?list[skip%list.length]:null;};
+// Dinner is settled once you log a dinner or a takeaway today.
+export const dinnerSettled=(state,today=dayKey())=>state.events.some(e=>e.date===today&&(e.type==='ordered'||(e.type==='cooked'&&e.meal==='dinner')));
+
+// ---------- the week in review, once it is over ----------
+// The usual month spread over that month's days, so weeks add up to months.
+const usualDay=(state,date)=>state.baseline?(state.baseline.monthly+(state.baseline.groceries||0))/daysInMonth(monthOf(date)):0;
+const usualOrdersDay=(state,date)=>state.baseline?state.baseline.orders/daysInMonth(monthOf(date)):0;
+const asOf=(state,date)=>({...state,events:state.events.filter(e=>e.date<date)});   // the record as it stood when a day began
+export function weekRecap(state,start,today=dayKey()){
+  const end=addDays(start,6),since=state.baseline?.since||start,r=weekReport(state,start,today),days=[];let usual=0,usualOrders=0,counted=0;
+  for(let i=0;i<7;i++){
+    const date=addDays(start,i),{items,orders}=dayMeals(state,date,today),tracked=date>=since&&date<today;
+    if(tracked){usual+=usualDay(state,date);usualOrders+=usualOrdersDay(state,date);counted++;}
+    days.push({date,meals:items,orders,tracked});
+  }
+  const after=addDays(end,1),xpFrom=summary(asOf(state,start),start).xp,xpTo=summary(asOf(state,after),after).xp;
+  return {...r,days,counted,usual:Math.round(usual),usualOrders,kept:Math.round(usual)-r.spent-r.groceries,xp:xpTo-xpFrom,levelFrom:levelFor(xpFrom),levelTo:levelFor(xpTo)};
+}
+// Last week, once it has ended and if you had started by then.
+export const recapWeek=(state,today=dayKey())=>{if(!state.baseline)return null;const start=addDays(weekStart(today),-7);return addDays(start,6)<state.baseline.since?null:start;};
+
 export function xpInfo(s){
   const capped=s.level>=99,floor=xpAtLevel(s.level),next=capped?s.xp:xpAtLevel(s.level+1);
   const into=capped?s.xp:s.xp-floor,span=Math.max(1,capped?s.xp:next-floor);

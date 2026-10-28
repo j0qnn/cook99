@@ -1,8 +1,8 @@
 // Offline: every file the app needs is cached on install. Requests are answered from the cache at once and refreshed
 // from the network in the background, so the app opens instantly and offline, and picks up a new version on the next
 // launch. Bump VERSION with each release.
-const VERSION='cook99-2026-10-28c';
-const FILES=['./','./index.html','./styles.css?v=16','./app.js?v=24','./model.js','./charts.js','./dishes.js','./manifest.webmanifest','./icon.svg','./icon-180.png','./icon-512.png',
+const VERSION='cook99-2026-10-28d';
+const FILES=['./','./index.html','./styles.css?v=17','./app.js?v=25','./model.js','./charts.js','./dishes.js','./manifest.webmanifest','./icon.svg','./icon-180.png','./icon-512.png',
   './assets/Geist.ttf','./assets/InstrumentSerif-Regular.ttf'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(VERSION).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('cook99-')&&k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

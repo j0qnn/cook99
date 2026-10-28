@@ -35,7 +35,12 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigation
             guard let key = body["key"] as? String else { return }
             store.set(key, body["value"] as? String)
         case "export":
-            share(name: body["name"] as? String ?? "cook99.json", text: body["text"] as? String ?? "")
+            share(name: body["name"] as? String ?? "cook99.json", data: Data((body["text"] as? String ?? "").utf8))
+        case "shareImage":
+            // The week's picture arrives as a PNG data URL.
+            guard let url = body["data"] as? String, let comma = url.firstIndex(of: ","),
+                  let png = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return }
+            share(name: body["name"] as? String ?? "cook99-week.png", data: png)
         case "haptic":
             levelUpHaptics()
         default:
@@ -43,10 +48,10 @@ final class Bridge: NSObject, WKScriptMessageHandler, WKUIDelegate, WKNavigation
         }
     }
 
-    // A backup goes out through the share sheet: Save to Files, AirDrop, Mail.
-    private func share(name: String, text: String) {
+    // A backup or the week's picture goes out through the share sheet: Save to Files, Photos, AirDrop, Messages.
+    private func share(name: String, data: Data) {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-        do { try Data(text.utf8).write(to: file, options: .atomic) } catch { return }
+        do { try data.write(to: file, options: .atomic) } catch { return }
         let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
         if let view = webView {
             sheet.popoverPresentationController?.sourceView = view

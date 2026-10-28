@@ -3,7 +3,7 @@
 Your cooking book: an airy, minimal page of the dishes you actually cook. Cook at home, level Cooking from 1 to 99, and
 watch real money stay in your purse. No account, no server process, no dependencies; everything stays in the
 browser. `npm start` serves it on http://localhost:4175, `npm run share` on the local network for a phone,
-`npm run check` runs syntax checks and the 18 model tests.
+`npm run check` runs syntax checks and the 19 model tests.
 
 History: the pixel savings app (`../cook99-savings`) guessed the money; the clean app (`../archive/cook99-clean`)
 measured it. This version (2026-10-02) keeps the measured money and the data format and puts it in the cooking ## The page
@@ -15,6 +15,15 @@ the two big numbers, warm off-white (dark at night, following the system) and on
 - **Hero.** The level as one large serif numeral, "Cooking · 16 / 36 xp" beside it, and this month's kept money on
   the right (tap it for the Ledger; it turns tomato when negative). Under it a 2px progress line: ink normally,
   tomato while a cooking streak is on. That colour is the only sign of the streak.
+- **Last week.** On the first visit after a week ends, a quiet card reviews it: the seven days as blocks, home meals
+  and takeaways against your usual, money kept or over, the level before and after, and one line in Cook99's voice.
+  *Looks right* closes it and counts as the week's check-in; *Add a takeaway* opens the form on that week; *Share*
+  hands a 1080×1350 picture of the week (same blocks, always on paper, money only when the week kept some) to the
+  share sheet. It replaces the since-your-last-visit card that day.
+- **Tonight.** One dinner idea from your own book: dishes not made in the last three days come first, those with
+  everything in and planned this week before the rest, favourites before the rarely made (`tonightList`).
+  *Something else* walks down that list; *Cook this* logs it as tonight's dinner. With an empty book it offers a quick
+  idea from the catalogue, a different one each day. It goes away once a dinner or a takeaway is logged today.
 - **Tabs.** All, Ready (every ingredient in), Quick (ready and twenty minutes or less), This week.
 - **The list.** Only dishes you have cooked, most cooked first: name, a tomato dot when everything is in, "this
   week" when planned, times cooked. Tap a dish and it opens in place: XP, minutes, last cooked, its ingredients as
@@ -65,7 +74,10 @@ On opening, a quiet card shows what happened **since your last visit** (levels, 
 levels gained while you were away play their level-up. Once a week an optional check-in asks whether there was a
 takeaway you have not logged. *Log meals* in Settings switches back to counting only what you log. Older records
 switch to assume-home-cooked from the day they are first opened; move the start earlier in Settings if you were
-cooking all along. The home page shows days in a row without an unplanned takeaway (planned treats keep the run).
+cooking all along. The month line reads "79 home meals · 2 takeaways, usually 10": counts that only add up, against
+your usual by now. There is deliberately no run of delivery-free days. A counter that resets to zero on one order is
+how a lapse turns into a relapse (the abstinence violation effect: "I've blown it anyway"); here a takeaway is one
+tomato slab and nothing earned is taken back. An app reopened from the background on a new day refreshes itself.
 
 ## Pictures
 
@@ -77,6 +89,8 @@ at home and groceries, tomato (`--out`) for takeaway, grey for nothing. `charts.
   outlined, today has a dark edge. Tap a day for what was cooked and ordered; drag sideways to turn it a little.
 - **Spending** (Ledger): one slab for this month's food spending against your usual by now. The outline is the usual,
   the green and tomato parts are groceries and takeaway, the empty rest is what you kept; the legend carries the values.
+- **Last week** (home page, on the first visit after a week ends): the seven days in a row, the same slabs, held at
+  one angle. `paintBlocks` draws the same geometry on a canvas for the share picture.
 - **Weeks** (Ledger): the last weeks as slim stacked columns in the same colours, tap one for its numbers; the list
   below keeps every value as text.
 
