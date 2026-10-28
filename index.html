@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)"><meta name="description" content="Order less, cook more. Level Cooking to 99."><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Cook99"><link rel="stylesheet" href="./styles.css?v=15"><title>Cook99</title></head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)"><meta name="description" content="Order less, cook more. Level Cooking to 99."><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="./icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Cook99"><link rel="stylesheet" href="./styles.css?v=16"><title>Cook99</title></head>
 <body><main class="page">
   <header class="top"><span class="mark">Cook99</span><nav><button id="weekButton" class="link" type="button">Week</button><button id="ledgerButton" class="link" type="button">Ledger</button></nav></header>
   <section class="hero" aria-label="Cooking level">
@@ -7,6 +7,9 @@
       <button id="purse" class="purse" type="button" aria-label="Kept this month. Open the ledger."><span id="purseAmount">—</span><span class="caption">kept this month</span></button></div>
     <div class="bar" id="bar" role="progressbar" aria-label="Progress to the next level" aria-valuemin="0" aria-valuemax="100"><i id="barFill"></i></div>
   </section>
+  <section id="visit" class="notice" hidden aria-live="polite"><p class="caption" id="visitTitle">Since your last visit</p><p class="notice-line" id="visitLine"></p><button id="visitDone" class="link" type="button">Nice</button></section>
+  <section id="checkin" class="notice" hidden><p class="notice-line" id="checkinLine">Any takeaway this week you haven’t logged?</p>
+    <div class="notice-acts"><button id="checkinNo" class="pill primary small" type="button">No, all home-cooked</button><button id="checkinYes" class="pill small" type="button">Add one</button></div></section>
   <section class="month" aria-labelledby="monthTitle">
     <div class="month-head"><p class="caption" id="monthTitle">This month</p><p class="sub" id="monthLine"></p></div>
     <div id="monthChart" class="chart"></div>
@@ -25,9 +28,10 @@
   <div class="ding-dialog"><div class="ding-text"><p class="ding-title" id="dingTitle"></p><p class="ding-sub" id="dingSub"></p><p class="ding-note" id="dingNote"></p><p class="ding-continue">Tap to carry on</p></div></div></div></div>
 
 <dialog id="welcomeDialog"><form id="welcomeForm"><h2>Order less. Cook more.</h2>
-  <p class="muted">Every dish you cook is kept here with its ingredients and earns experience toward Cooking 99. Money is measured, not guessed: your usual month of food spending, delivery and groceries, against what you actually spend from today.</p>
+  <p class="muted">From today every day counts as home-cooked, three meals of experience toward Cooking 99, unless you log a takeaway. You just cook and look in now and then. Money compares your usual month of food spending with what you spend from now on.</p>
   <div class="grid"><label>Usual month on delivery<input id="welcomeMonthly" inputmode="decimal" placeholder="247" required></label><label>Orders that month<input id="welcomeOrders" inputmode="numeric" placeholder="11" required></label></div>
   <label>Usual month on groceries<input id="welcomeGroceries" inputmode="decimal" placeholder="200"></label>
+  <label>Groceries now, about per week <span class="opt">optional</span><input id="welcomeWeekly" inputmode="decimal" placeholder="70"></label>
   <label>Currency<select id="welcomeCurrency"><option value="EUR">Euro</option><option value="USD">US dollar</option><option value="GBP">Pound</option></select></label>
   <p class="error" id="welcomeError" role="alert"></p><button class="pill primary wide" type="submit">Start</button></form></dialog>
 
@@ -71,9 +75,15 @@
   <label>Usual month on groceries<input id="settingGroceries" inputmode="decimal" placeholder="0"></label>
   <label>Started<input id="settingSince" type="date" required></label>
   <label>Currency<select id="settingCurrency"><option value="EUR">Euro</option><option value="USD">US dollar</option><option value="GBP">Pound</option></select></label>
+  <p class="caption">Counting</p>
+  <div class="seg" id="modeSeg" role="tablist" aria-label="How days are counted"><button type="button" data-mode="assume">Assume cooked</button><button type="button" data-mode="log">Log meals</button></div>
+  <p class="muted small" id="modeHint"></p>
+  <div id="assumeFields"><p class="field-label">Home meals on a usual day</p><div class="seg" id="mealsSeg" role="tablist" aria-label="Home meals on a usual day"><button type="button" data-meals="1">One</button><button type="button" data-meals="2">Two</button><button type="button" data-meals="3">Three</button></div>
+  <label>Counting home-cooked days from<input id="habitFrom" type="date"></label>
+  <label>Groceries now, per week <span class="opt">(about)</span><input id="habitWeekly" inputmode="decimal"></label></div>
   <p class="error" id="settingsError" role="alert"></p><button class="pill primary wide" type="submit">Save</button>
   <button type="button" id="previewDing" class="link">Preview the level-up</button>
   <p class="caption">Your data</p><p class="muted">Kept in this browser only. Export now and then.</p>
   <div class="grid"><button type="button" id="exportButton" class="pill">Export</button><label class="pill file">Import<input id="importFile" type="file" accept="application/json,.json"></label></div>
   <button type="button" id="resetButton" class="link danger">Start over</button></form></dialog>
-<script type="module" src="./app.js?v=21"></script></body></html>
+<script type="module" src="./app.js?v=24"></script></body></html>

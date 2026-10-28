@@ -1,5 +1,5 @@
 import {blocks,spendingMeter} from './charts.js';
-import {KEY,CURRENCIES,CATEGORIES,initialState,dayKey,setBaseline,logCooked,logOrdered,logGroceries,GROCERY_SPANS,lastGrocerySpan,removeEvent,summary,monthDays,monthOf,xpInfo,xpAtLevel,MEALS,mealXp,mealFor,findDish,book,searchDishes,saveRecipe,setHave,hasIngredient,isReady,picksFor,togglePick,clearPicks,shoppingList,weekStart,weeks,plannedUsed,validateState,load,persist} from './model.js';
+import {KEY,CURRENCIES,CATEGORIES,initialState,dayKey,setBaseline,logCooked,logOrdered,logGroceries,GROCERY_SPANS,lastGrocerySpan,removeEvent,summary,monthDays,monthOf,setHabit,checkIn,checkInDue,daysBetween,xpInfo,xpAtLevel,MEALS,mealXp,mealFor,findDish,book,searchDishes,saveRecipe,setHave,hasIngredient,isReady,picksFor,togglePick,clearPicks,shoppingList,weekStart,weeks,plannedUsed,validateState,load,persist} from './model.js';
 const $=id=>document.getElementById(id);
 const set=(id,text)=>{$(id).textContent=text;};
 const el=(tag,className,text)=>{const n=document.createElement(tag);if(className)n.className=className;if(text!==undefined)n.textContent=text;return n;};
@@ -36,25 +36,47 @@ function render(){
   const picks=picksFor(state).length;set('weekButton',picks?`Week · ${picks}`:'Week');
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('is-on',t.dataset.view===view));
   renderMonth();renderList();$('cookButton').disabled=loadError;
+  $('checkin').hidden=!checkInDue(state)||!$('visit').hidden;
+  if(state.habit?.checked||state.habit?.from)set('checkinLine',`Any takeaway since ${shortDate(state.habit.checked||state.habit.from)} you haven’t logged?`);
+  saveVisit(s);
 }
+// ---------- since your last visit: what happened while you were away, like a watch syncing ----------
+const VISIT_KEY='cook99.visit';   // a note on this phone of what the page last showed; not part of the record
+let holdVisit=false;
+function saveVisit(s){if(holdVisit)return;try{store.setItem(VISIT_KEY,JSON.stringify({date:dayKey(),level:s.level,xp:s.xp,kept:s.keptTotal,meals:s.cookedTotal}));}catch{}}
+function showVisit(){
+  let last=null;try{last=JSON.parse(store.getItem(VISIT_KEY)||'null');}catch{}
+  const s=summary(state);if(!last||!last.date||last.date>=dayKey()||!state.baseline)return;
+  const days=daysBetween(last.date,dayKey()),meals=s.cookedTotal-last.meals,xp=s.xp-last.xp,kept=s.keptTotal-last.kept,levels=s.level-last.level;
+  if(meals<=0&&xp<=0&&!levels)return;
+  const when=days===1?'yesterday':days<7?new Intl.DateTimeFormat(undefined,{weekday:'long'}).format(new Date(`${last.date}T12:00:00`)):shortDate(last.date);
+  set('visitTitle',`Since ${when}`);
+  set('visitLine',[levels>0?`+${plural(levels,'level')}`:null,`+${xp.toLocaleString()} xp`,meals>0?`${plural(meals,'home meal')}`:null,state.baseline?`${kept>=0?'':'−'}${money(Math.abs(kept))} ${kept>=0?'kept':'over'}`:null].filter(Boolean).join(' · '));
+  $('visit').hidden=false;$('checkin').hidden=true;
+  if(levels>0)setTimeout(()=>levelUp(last.level,s.level,s),700);
+}
+$('visitDone').onclick=()=>{$('visit').hidden=true;render();};
+$('checkinNo').onclick=()=>{commit(checkIn(state),'Every day counted. Well cooked.');};
+$('checkinYes').onclick=()=>{openSpent('takeaway');};
 // ---------- the month as a little landscape: one slab per meal, green cooked, tomato takeaway ----------
 const longDate=k=>new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short'}).format(new Date(`${k}T12:00:00`));
 let monthView=null,weekView=null,firstPaint=true;
 function renderMonth(){
   const today=dayKey(),m=monthDays(state,monthOf(today),today),meals=m.days.reduce((a,d)=>a+d.meals.length,0),outs=m.days.reduce((a,d)=>a+d.orders.length,0);
   set('monthTitle',new Intl.DateTimeFormat(undefined,{month:'long'}).format(new Date(`${today}T12:00:00`)));
-  set('monthLine',`${plural(meals,'meal')} cooked · ${plural(outs,'takeaway')}`);
+  const assume=state.habit?.mode==='assume'&&state.habit.from,free=summary(state,today).deliveryFree;
+  set('monthLine',assume?`${plural(meals,'home meal')} · ${plural(free,'day')} delivery-free`:`${plural(meals,'meal')} cooked · ${plural(outs,'takeaway')}`);
   const cells=m.days.map(d=>({col:d.col,row:d.row,today:d.isToday,ahead:d.ahead,
     segments:[...d.meals.map(()=>({kind:'home',h:7})),...d.orders.map(()=>({kind:'out',h:7}))],
-    tip:{title:longDate(d.date),lines:d.ahead?['Still to come']:d.meals.length||d.orders.length?[...d.meals.map(e=>`${mealLabel(e.meal)} · ${e.dish}`),...d.orders.map(o=>`Takeaway · ${exact(o.amount)}${o.planned?' (planned)':''}`)]:['Nothing logged']}}));
+    tip:{title:longDate(d.date),lines:d.ahead?['Still to come']:d.meals.length||d.orders.length?[...d.meals.map(e=>`${mealLabel(e.meal)} · ${e.assumed?'home-cooked':e.dish}`),...d.orders.map(o=>`Takeaway · ${exact(o.amount)}${o.planned?' (planned)':''}`)]:['Nothing logged']}}));
   monthView?.destroy();
-  monthView=blocks($('monthChart'),{cols:7,rows:m.rows,cells,rise:firstPaint,label:`${$('monthTitle').textContent}: ${plural(meals,'meal')} cooked and ${plural(outs,'takeaway')} so far. Each day shows one slab per meal.`});
+  monthView=blocks($('monthChart'),{cols:7,rows:m.rows,cells,rise:firstPaint,label:`${$('monthTitle').textContent}: ${plural(meals,'home meal')} and ${plural(outs,'takeaway')} so far. Each day shows one slab per meal.`});
   firstPaint=false;
 }
 function renderList(){
   const box=$('list'),week=new Set(picksFor(state).map(d=>d.name)),all=book(state);box.replaceChildren();
   const list=all.filter(d=>view==='all'||(view==='ready'&&isReady(state,d))||(view==='quick'&&isReady(state,d)&&(d.minutes??99)<=20)||(view==='week'&&week.has(d.name)));
-  if(!all.length){box.append(el('p','empty','Nothing here yet. Cook something and it stays here, with its ingredients, ready for the next time you need an idea.'));return;}
+  if(!all.length){box.append(el('p','empty',state.habit?.mode==='assume'?'Your days count as home-cooked on their own. Log a dish here only if you want to keep it, with its ingredients, for the next time you need an idea.':'Nothing here yet. Cook something and it stays here, with its ingredients, ready for the next time you need an idea.'));return;}
   if(!list.length){box.append(el('p','empty',{ready:'Nothing has all its ingredients in. Tap an ingredient to mark it.',quick:'Nothing quick has all its ingredients in.',week:'Nothing planned. Open a dish and plan it.'}[view]));return;}
   for(const d of list){
     const item=el('div','item'),row=button('row',null,()=>{open=open===d.name?null:d.name;renderList();});
@@ -140,7 +162,7 @@ function levelUp(from,to,s){
     set('dingNote',to<99?(MILESTONES[to]||''):'');
     document.querySelectorAll('dialog[open]').forEach(d=>d.close());   // open sheets sit in the top layer and would hide it
     const ding=$('ding');ding.classList.remove('is-leaving');ding.hidden=false;
-    fireworks(to>=99||Boolean(MILESTONES[to]));if(!native({type:'haptic',kind:'levelup'}))try{navigator.vibrate?.([12,60,24]);}catch{}
+    fireworks(to>=99||Boolean(MILESTONES[to]));if(!native({type:'haptic',kind:'levelup'})&&navigator.userActivation?.hasBeenActive)try{navigator.vibrate?.([12,60,24]);}catch{}
     clearTimeout(dingTimer);dingTimer=setTimeout(closeDing,to>=99?9000:6000);
   },520);
 }
@@ -232,18 +254,19 @@ $('weekButton').onclick=openWeek;$('logShop').onclick=()=>{$('weekDialog').close
 // ---------- ledger ----------
 function openLedger(){
   const s=summary(state),m=s.thisMonth,kept=$('ledgerKept');kept.textContent=state.baseline?exact(m.kept):'—';kept.classList.toggle('is-negative',m.kept<0);
+  const about=m.groceriesEstimated>0?'about ':'';
   set('ledgerLine',state.baseline?`Kept this month, against your usual food spending of ${money(m.usual)} by now.`:'Set your usual month in Settings.');
   spendingMeter($('spendMeter'),{usual:m.usual,parts:[{kind:'home',value:m.groceries},{kind:'out',value:m.spent}],label:`Usual food spending by now ${money(m.usual)}: groceries ${money(m.groceries)}, takeaway ${money(m.spent)}.`});
   const legend=$('spendLegend');legend.replaceChildren();
   const key=(cls,text)=>{const span=el('span');span.append(el('i',`key ${cls}`),text);legend.append(span);};
-  key('home',`Groceries ${money(m.groceries)}`);key('out',`Takeaway ${money(m.spent)}`);key('track',m.kept>=0?`Kept ${money(m.kept)}`:`Over by ${money(-m.kept)}`);
+  key('home',`Groceries ${about}${money(m.groceries)}`);key('out',`Takeaway ${money(m.spent)}`);key('track',m.kept>=0?`Kept ${money(m.kept)}`:`Over by ${money(-m.kept)}`);
   const recent=weeks(state).reverse(),unit=Math.min(3.5,48/Math.max(1,...recent.map(w=>w.cooked+w.orders)));
   weekView?.destroy();
   weekView=blocks($('weekChart'),{cols:recent.length,rows:1,cell:34,inset:11,theta:20,range:[10,34],phi:34,rise:true,label:`Last ${plural(recent.length,'week')}: meals cooked and takeaways per week.`,
     cells:recent.map((w,i)=>({col:i,row:0,today:i===recent.length-1,segments:[{kind:'home',h:w.cooked*unit},{kind:'out',h:w.orders*unit}].filter(x=>x.h>0),
       tip:{title:i===recent.length-1?'This week':`Week of ${shortDate(w.start)}`,lines:[`${plural(w.cooked,'meal')} cooked`,`${plural(w.orders,'takeaway')}${w.planned?', one planned':''}`]}}))});
   const axis=$('weekAxis');axis.replaceChildren(el('span',null,recent.length>1?shortDate(recent[0].start):''),el('span',null,'This week'));
-  set('ledgerMeal',m.homeMeal!=null?`Home meals this month: about ${exact(m.homeMeal)} each.${s.averageOrder?` A takeaway: about ${money(s.averageOrder)}.`:''}`:state.baseline&&!state.baseline.groceries&&m.groceries?'Add your usual grocery month in Settings, or every shop counts as new spending.':'');
+  set('ledgerMeal',(m.groceriesEstimated>0?`Groceries are estimated at ${money(Math.round((state.habit.groceriesWeekly??Math.round((state.baseline?.groceries||0)*12/52))))} a week where no shop is logged; logging a shop replaces the estimate. `:'')+(m.homeMeal!=null?`Home meals this month: about ${exact(m.homeMeal)} each.${s.averageOrder?` A takeaway: about ${money(s.averageOrder)}.`:''}`:state.baseline&&!state.baseline.groceries&&m.groceries?'Add your usual grocery month in Settings, or every shop counts as new spending.':''));
   set('ledgerTotal',state.baseline?`Since ${shortDate(state.baseline.since)}: ${exact(s.keptTotal)} kept, ${plural(s.cookedTotal,'meal')} cooked.`:'');
   const wk=$('weeks'),mo=$('months'),en=$('entries');wk.replaceChildren();mo.replaceChildren();en.replaceChildren();
   for(const w of weeks(state)){const left=el('span','grow');left.append(`Week of ${shortDate(w.start)}`,el('small',null,`cooked ${w.cooked} on ${plural(w.nights,'night')}${w.planned?', a planned treat':''}${w.groceries?` · groceries ${money(w.groceries)}`:''}`));wk.append(line(left,el('span',`amount ${w.unplanned?'bad':'good'}`,`${w.unplanned} unplanned`)));}
@@ -259,9 +282,23 @@ function openLedger(){
 $('purse').onclick=openLedger;$('ledgerButton').onclick=openLedger;
 
 // ---------- settings and first run ----------
-$('settingsButton').onclick=()=>{const b=state.baseline;$('settingMonthly').value=b?(b.monthly/100).toFixed(2):'';$('settingOrders').value=b?String(b.orders):'';$('settingGroceries').value=b?.groceries?(b.groceries/100).toFixed(2):'';$('settingSince').value=b?b.since:dayKey();$('settingSince').max=dayKey();$('settingCurrency').value=state.currency;$('settingsError').textContent=loadError?'Saved data needs recovery. Export it, then import a valid backup.':'';$('settingsDialog').showModal();};
-$('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{const next=setBaseline({...state,currency:CURRENCIES.includes($('settingCurrency').value)?$('settingCurrency').value:state.currency},{monthly:$('settingMonthly').value,orders:Number($('settingOrders').value),since:$('settingSince').value,groceries:$('settingGroceries').value.trim()});if(next.baseline.since>dayKey())throw new Error('The start date cannot be in the future.');commit(next,'Saved');$('settingsDialog').close();if($('ledgerDialog').open)openLedger();}catch(err){$('settingsError').textContent=err.message;}});
-$('welcomeForm').addEventListener('submit',e=>{e.preventDefault();try{commit(setBaseline({...state,currency:$('welcomeCurrency').value},{monthly:$('welcomeMonthly').value,orders:Number($('welcomeOrders').value),since:dayKey(),groceries:$('welcomeGroceries').value.trim()}));$('welcomeDialog').close();}catch(err){$('welcomeError').textContent=err.message;}});
+// Counting settings: assume home-cooked or log each meal; usual meals a day; from when; groceries per week.
+let settingMode='assume',settingMeals=3;
+function paintCounting(){
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('is-on',b.dataset.mode===settingMode));
+  document.querySelectorAll('#mealsSeg button').forEach(b=>b.classList.toggle('is-on',Number(b.dataset.meals)===settingMeals));
+  $('assumeFields').hidden=settingMode!=='assume';
+  set('modeHint',settingMode==='assume'?'Every finished day counts as home-cooked unless you log a takeaway. Logging a dish is optional, for your book.':'Only the meals you log count toward your level.');
+}
+document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>{settingMode=b.dataset.mode;paintCounting();});
+document.querySelectorAll('#mealsSeg button').forEach(b=>b.onclick=()=>{settingMeals=Number(b.dataset.meals);paintCounting();});
+$('settingsButton').onclick=()=>{const h=state.habit||{};settingMode=h.mode||'assume';settingMeals=h.meals||3;$('habitFrom').value=h.from||dayKey();$('habitFrom').max=dayKey();$('habitFrom').min=state.baseline?.since||'';$('habitWeekly').value=h.groceriesWeekly!=null?(h.groceriesWeekly/100).toFixed(2):'';$('habitWeekly').placeholder=state.baseline?.groceries?`empty: ${money(Math.round(state.baseline.groceries*12/52))}, from your usual month`:'';paintCounting();const b=state.baseline;$('settingMonthly').value=b?(b.monthly/100).toFixed(2):'';$('settingOrders').value=b?String(b.orders):'';$('settingGroceries').value=b?.groceries?(b.groceries/100).toFixed(2):'';$('settingSince').value=b?b.since:dayKey();$('settingSince').max=dayKey();$('settingCurrency').value=state.currency;$('settingsError').textContent=loadError?'Saved data needs recovery. Export it, then import a valid backup.':'';$('settingsDialog').showModal();};
+$('settingsForm').addEventListener('submit',e=>{e.preventDefault();try{const next=setBaseline({...state,currency:CURRENCIES.includes($('settingCurrency').value)?$('settingCurrency').value:state.currency},{monthly:$('settingMonthly').value,orders:Number($('settingOrders').value),since:$('settingSince').value,groceries:$('settingGroceries').value.trim()});if(next.baseline.since>dayKey())throw new Error('The start date cannot be in the future.');
+  const from=settingMode==='assume'?($('habitFrom').value||dayKey()):(state.habit?.from||'');if(from>dayKey())throw new Error('Counting cannot start in the future.');
+  const before=summary(state),withHabit=setHabit(next,{mode:settingMode,meals:settingMeals,from:from&&from<next.baseline.since?next.baseline.since:from,groceriesWeekly:$('habitWeekly').value.trim()});
+  commit(withHabit,'Saved');$('settingsDialog').close();if($('ledgerDialog').open)openLedger();
+  const after=summary(state);if(after.level>before.level){document.querySelectorAll('dialog[open]').forEach(d=>d.close());levelUp(before.level,after.level,after);}}catch(err){$('settingsError').textContent=err.message;}});
+$('welcomeForm').addEventListener('submit',e=>{e.preventDefault();try{commit(setHabit(setBaseline({...state,currency:$('welcomeCurrency').value},{monthly:$('welcomeMonthly').value,orders:Number($('welcomeOrders').value),since:dayKey(),groceries:$('welcomeGroceries').value.trim()}),{mode:'assume',meals:3,from:dayKey(),groceriesWeekly:$('welcomeWeekly').value.trim()}));$('welcomeDialog').close();}catch(err){$('welcomeError').textContent=err.message;}});
 // Export: the iPhone share sheet when it can take a file (save to Files, AirDrop, mail), a download otherwise.
 $('exportButton').onclick=async()=>{
   const raw=loadError?store.getItem(KEY):JSON.stringify(state,null,2),name=`cook99-${dayKey()}.json`,blob=new Blob([raw||''],{type:'application/json'});
@@ -274,7 +311,7 @@ $('resetButton').onclick=()=>{if(!confirm('Start over? This deletes everything i
 $('cookButton').onclick=openCook;
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 window.addEventListener('storage',e=>{if(e.key!==KEY)return;try{state=load(store);loadError=false;undo=null;render();}catch{loadError=true;render();}});
-render();
+holdVisit=true;render();holdVisit=false;showVisit();saveVisit(summary(state));
 if(loadError)message('Saved data could not be read. Open the Ledger, then Settings, to export it.');
 else if(!state.baseline)$('welcomeDialog').showModal();
 // Installed to the Home Screen: work offline, and ask the browser to keep this app's data rather than clear it when space runs low.

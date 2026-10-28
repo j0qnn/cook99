@@ -10,7 +10,11 @@ export function newId(){
   return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
 // baseline: what a usual month of delivery cost before you started. pantry: reagents you have in. picks: this week's plan.
-export const initialState=()=>({version:2,currency:'EUR',baseline:null,events:[],dishes:[],pantry:[],picks:{week:'',dishes:[]}});
+// habit: how days are counted. 'assume' (the default): every finished day since `from` is home-cooked unless a takeaway
+// is logged; 'log': only meals you log count. meals: home meals on a usual day. groceriesWeekly: what groceries cost now,
+// about, per week (null: your usual grocery month). checked: the last weekly check-in.
+export const defaultHabit=()=>({mode:'assume',meals:3,from:'',groceriesWeekly:null,checked:''});
+export const initialState=()=>({version:2,currency:'EUR',baseline:null,habit:defaultHabit(),events:[],dishes:[],pantry:[],picks:{week:'',dishes:[]}});
 export function cents(value){
   const s=String(value).trim().replace(',','.');
   if(!/^\d{1,6}(\.\d{1,2})?$/.test(s))throw new Error('Enter an amount with up to two decimals.');
@@ -164,19 +168,21 @@ export function trackedDays(state,month,today){
 // Kept = your usual food spending by now (delivery plus groceries, pro-rated) minus what you actually spent on both.
 export function monthReport(state,month,today=dayKey()){
   const days=trackedDays(state,month,today),share=days/daysInMonth(month);
-  let spent=0,orders=0,cooked=0;
-  for(const e of state.events)if(monthOf(e.date)===month){if(e.type==='ordered'){spent+=e.amount;orders++;}else if(e.type==='cooked')cooked++;}
+  let spent=0,orders=0;
+  for(const e of state.events)if(monthOf(e.date)===month&&e.type==='ordered'){spent+=e.amount;orders++;}
   const from=state.baseline?[month+'-01',state.baseline.since].sort().at(-1):month+'-01',to=[`${month}-${String(daysInMonth(month)).padStart(2,'0')}`,today].sort()[0];
-  const groceries=days?Math.round(groceriesBetween(state,from,to)):0;
+  const cooked=homeMealsBetween(state,month+'-01',to,today);
+  const shop=days?groceriesFor(state,from,to):{logged:0,estimated:0},groceries=Math.round(shop.logged+shop.estimated),groceriesEstimated=Math.round(shop.estimated);
   const usualDelivery=state.baseline?Math.round(state.baseline.monthly*share):0,usualGroceries=state.baseline?Math.round((state.baseline.groceries||0)*share):0;
   const usual=usualDelivery+usualGroceries,usualOrders=state.baseline?state.baseline.orders*share:0;
-  return {month,days,share,spent,orders,cooked,groceries,usual,usualDelivery,usualGroceries,usualOrders,kept:usual-spent-groceries,
+  return {month,days,share,spent,orders,cooked,groceries,groceriesEstimated,usual,usualDelivery,usualGroceries,usualOrders,kept:usual-spent-groceries,
     homeMeal:groceries>0&&cooked>0?Math.round(groceries/cooked):null};
 }
 export function weekReport(state,start,today=addDays(start,6)){
-  const end=addDays(start,6);let cooked=0,planned=0,unplanned=0,spent=0;const days=new Set();
-  for(const e of state.events){if(e.date<start||e.date>end)continue;if(e.type==='cooked'){cooked++;days.add(e.date);}else if(e.type==='ordered'){spent+=e.amount;if(e.planned)planned++;else unplanned++;}}
-  const groceries=Math.round(groceriesBetween(state,start,end<today?end:today));
+  const end=addDays(start,6),last=end<today?end:today;let planned=0,unplanned=0,spent=0,cooked=0;const days=new Set();
+  for(const e of state.events){if(e.date<start||e.date>end||e.type!=='ordered')continue;spent+=e.amount;if(e.planned)planned++;else unplanned++;}
+  for(let d=start;d<=last;d=addDays(d,1)){const n=dayMeals(state,d,today).items.length;if(n){cooked+=n;days.add(d);}}
+  const shop=groceriesFor(state,start,last),groceries=Math.round(shop.logged+shop.estimated);
   return {start,end,cooked,nights:days.size,planned,unplanned,orders:planned+unplanned,spent,groceries};
 }
 export function weeks(state,today=dayKey(),count=8){
@@ -185,14 +191,58 @@ export function weeks(state,today=dayKey(),count=8){
   return list;
 }
 
+// ---------- assume home-cooked: a day's meals, logged and assumed ----------
+const SLOTS={3:['breakfast','lunch','dinner'],2:['lunch','dinner'],1:['dinner']};
+const slotOrder=m=>MEALS.findIndex(x=>x.key===m);
+export const isAssumedDay=(state,date,today)=>state.habit?.mode==='assume'&&Boolean(state.habit.from)&&date>=state.habit.from&&date<today&&(!state.baseline||date>=state.baseline.since);
+// The meals of a day: what you logged, then (for a finished day in assume mode) the usual meals you did not log and did
+// not replace with a takeaway. A takeaway replaces dinner first, then lunch, then breakfast.
+export function dayMeals(state,date,today=dayKey()){
+  const logged=state.events.filter(e=>e.type==='cooked'&&e.date===date).sort((a,b)=>slotOrder(a.meal)-slotOrder(b.meal)||a.createdAt-b.createdAt).map(e=>({id:e.id,meal:e.meal,dish:e.dish,assumed:false,tempted:e.tempted}));
+  const orders=state.events.filter(e=>e.type==='ordered'&&e.date===date).sort((a,b)=>a.createdAt-b.createdAt);
+  let assumed=[];
+  if(isAssumedDay(state,date,today)){
+    let slots=[...(SLOTS[state.habit.meals]||SLOTS[3])].filter(s=>!logged.some(l=>l.meal===s));
+    for(let i=0;i<orders.length&&slots.length;i++)slots.pop();
+    assumed=slots.map(meal=>({id:`assumed:${date}:${meal}`,meal,dish:null,assumed:true}));
+  }
+  return {items:[...logged,...assumed].sort((a,b)=>slotOrder(a.meal)-slotOrder(b.meal)),orders};
+}
+export function homeMealsBetween(state,from,to,today=dayKey()){let n=0;for(let d=from;d<=to;d=addDays(d,1))n+=dayMeals(state,d,today).items.length;return n;}
+// Groceries for a range: shops you logged, spread over the days they last; in assume mode, the weekly estimate for days no
+// logged shop covers. The estimate defaults to your usual grocery month, so it cancels out until you set a truer figure.
+export const groceryEstimateDaily=state=>{const h=state.habit;if(h?.mode!=='assume')return 0;const weekly=h.groceriesWeekly??Math.round((state.baseline?.groceries||0)*12/52);return weekly/7;};
+export function groceriesFor(state,from,to){
+  if(to<from)return {logged:0,estimated:0};
+  const logged=groceriesBetween(state,from,to),daily=groceryEstimateDaily(state);let estimated=0;
+  if(daily>0&&state.habit.from){const shops=state.events.filter(e=>e.type==='groceries');
+    for(let d=[from,state.habit.from].sort().at(-1);d<=to;d=addDays(d,1))if(!shops.some(e=>e.date<=d&&d<=addDays(e.date,e.days-1)))estimated+=daily;}
+  return {logged,estimated};
+}
+// Days in a row without an unplanned takeaway, counting finished days only. Planned treats do not break it.
+export function deliveryFreeDays(state,today=dayKey()){
+  const start=state.habit?.from||state.baseline?.since;if(!start)return 0;
+  const last=state.events.filter(e=>e.type==='ordered'&&!e.planned).map(e=>e.date).sort().at(-1);
+  const from=last&&last>=start?addDays(last,1):start;return Math.max(0,daysBetween(from,today));
+}
+export function setHabit(state,{mode,meals,from,groceriesWeekly}){
+  const h={...defaultHabit(),...state.habit};
+  if(mode!==undefined){if(!['assume','log'].includes(mode))throw new Error('Choose how days are counted.');h.mode=mode;}
+  if(meals!==undefined){if(![1,2,3].includes(meals))throw new Error('Choose one, two or three meals.');h.meals=meals;}
+  if(from!==undefined){if(from!==''&&!validDate(from))throw new Error('Choose a start date.');h.from=from;}
+  if(groceriesWeekly!==undefined)h.groceriesWeekly=groceriesWeekly===''||groceriesWeekly===null?null:cents(groceriesWeekly);
+  return {...state,habit:h};
+}
+export const checkIn=(state,today=dayKey())=>({...state,habit:{...defaultHabit(),...state.habit,checked:today}});
+export const checkInDue=(state,today=dayKey())=>state.habit?.mode==='assume'&&Boolean(state.habit.from)&&daysBetween(state.habit.checked||state.habit.from,today)>=7;
+
 // ---------- the month, day by day, for the calendar picture ----------
 // Each day of the month in a Monday-first grid: its meals cooked and takeaways, whether it is today or still ahead.
 export function monthDays(state,month,today=dayKey()){
   const days=[],first=`${month}-01`,offset=(new Date(dayNumber(first)*86400000).getUTCDay()+6)%7;
   for(let d=1;d<=daysInMonth(month);d++){
     const date=`${month}-${String(d).padStart(2,'0')}`,i=offset+d-1;
-    const meals=state.events.filter(e=>e.type==='cooked'&&e.date===date).sort((a,b)=>MEALS.findIndex(m=>m.key===a.meal)-MEALS.findIndex(m=>m.key===b.meal)||a.createdAt-b.createdAt);
-    const orders=state.events.filter(e=>e.type==='ordered'&&e.date===date).sort((a,b)=>a.createdAt-b.createdAt);
+    const {items:meals,orders}=dayMeals(state,date,today);
     days.push({date,day:d,col:i%7,row:Math.floor(i/7),meals,orders,isToday:date===today,ahead:date>today});
   }
   return {month,rows:Math.floor((offset+daysInMonth(month)-1)/7)+1,days};
@@ -203,20 +253,24 @@ const byTime=(a,b)=>a.date.localeCompare(b.date)||a.createdAt-b.createdAt||a.id.
 export function summary(state,today=dayKey()){
   const months=[];
   if(state.baseline){let m=monthOf(state.baseline.since);const last=monthOf(today);while(m<=last){months.push(monthReport(state,m,today));m=addMonths(m,1);}}
-  const perDay={},counted=new Set(),gains=new Map();let xp=0,cookedTotal=0,ordersTotal=0,spentTotal=0,groceriesTotal=0,resisted=0,streak=0,lastDay=null;
-  for(const e of [...state.events].sort(byTime)){
-    if(e.type==='ordered'){ordersTotal++;spentTotal+=e.amount;continue;}
-    if(e.type==='groceries'){groceriesTotal+=e.amount;continue;}
-    cookedTotal++;if(e.tempted)resisted++;perDay[e.date]=(perDay[e.date]||0)+1;if(perDay[e.date]>DAILY_CAP)continue;
-    if(e.date!==lastDay){streak=lastDay&&daysBetween(lastDay,e.date)<=GRACE_DAYS+1?streak+1:1;lastDay=e.date;}
-    const base=mealXp(e.meal),bonus=streak>=RESTED_FROM?Math.round(base*RESTED_BONUS):0;gains.set(e.id,{base,rested:bonus});counted.add(e.id);xp+=base+bonus;
+  const counted=new Set(),gains=new Map();let xp=0,cookedTotal=0,assumedTotal=0,ordersTotal=0,spentTotal=0,groceriesTotal=0,resisted=0,streak=0,lastDay=null;
+  for(const e of state.events){if(e.type==='ordered'){ordersTotal++;spentTotal+=e.amount;}else if(e.type==='groceries')groceriesTotal+=e.amount;else if(e.tempted)resisted++;}
+  // Day by day: the meals you logged, then the usual meals assumed for finished days; three a day earn XP.
+  const dates=new Set(state.events.filter(e=>e.type==='cooked').map(e=>e.date));
+  const h=state.habit;if(h?.mode==='assume'&&h.from)for(let d=[h.from,state.baseline?.since||h.from].sort().at(-1);d<today;d=addDays(d,1))dates.add(d);
+  for(const date of [...dates].sort()){
+    const {items}=dayMeals(state,date,today);if(!items.length)continue;
+    cookedTotal+=items.length;assumedTotal+=items.filter(i=>i.assumed).length;
+    if(date!==lastDay){streak=lastDay&&daysBetween(lastDay,date)<=GRACE_DAYS+1?streak+1:1;lastDay=date;}
+    for(const item of items.slice(0,DAILY_CAP)){const base=mealXp(item.meal),bonus=streak>=RESTED_FROM?Math.round(base*RESTED_BONUS):0;gains.set(item.id,{base,rested:bonus});counted.add(item.id);xp+=base+bonus;}
   }
+  const cookedToday=state.events.filter(e=>e.type==='cooked'&&e.date===today).length;
   const alive=lastDay!==null&&daysBetween(lastDay,today)<=GRACE_DAYS+1;
   const streakNow=alive?streak:0,nextStreak=!alive?1:lastDay===today?streak:streak+1;
   const level=levelFor(xp),thisMonth=months.at(-1)||monthReport(state,monthOf(today),today),thisWeek=weekReport(state,weekStart(today),today);
   const unplannedMonth=state.events.filter(e=>e.type==='ordered'&&!e.planned&&monthOf(e.date)===monthOf(today)).length;
-  return {months,thisMonth,thisWeek,unplannedMonth,keptTotal:months.reduce((a,m)=>a+m.kept,0),xp,level,counted,gains,resisted,cookedTotal,ordersTotal,spentTotal,groceriesTotal,
-    streak:streakNow,rested:nextStreak>=RESTED_FROM,cookedToday:perDay[today]||0,averageOrder:state.baseline?.orders?Math.round(state.baseline.monthly/state.baseline.orders):0};
+  return {months,thisMonth,thisWeek,unplannedMonth,keptTotal:months.reduce((a,m)=>a+m.kept,0),xp,level,counted,gains,resisted,cookedTotal,assumedTotal,ordersTotal,spentTotal,groceriesTotal,
+    deliveryFree:deliveryFreeDays(state,today),streak:streakNow,rested:nextStreak>=RESTED_FROM,cookedToday,averageOrder:state.baseline?.orders?Math.round(state.baseline.monthly/state.baseline.orders):0};
 }
 export function xpInfo(s){
   const capped=s.level>=99,floor=xpAtLevel(s.level),next=capped?s.xp:xpAtLevel(s.level+1);
@@ -225,7 +279,7 @@ export function xpInfo(s){
 }
 
 // ---------- storage ----------
-export function validateState(raw){
+export function validateState(raw,{today=dayKey()}={}){
   if(raw?.version!==2||!Array.isArray(raw.events)||!Array.isArray(raw.dishes)||raw.events.length>50000)throw new Error('This is not a Cook99 backup.');
   const money=n=>Number.isSafeInteger(n)&&n>=0&&n<=10000000,text=(v,max)=>typeof v==='string'&&v.length<=max;
   const b=raw.baseline;
@@ -251,7 +305,11 @@ export function validateState(raw){
   const pantry=Array.isArray(raw.pantry)?raw.pantry:[];if(pantry.length>500||!pantry.every(x=>text(x,40)))throw new Error('Invalid pantry in backup.');
   const picks=raw.picks&&typeof raw.picks==='object'?raw.picks:{week:'',dishes:[]};
   if(!(picks.week===''||validDate(picks.week))||!Array.isArray(picks.dishes)||picks.dishes.length>MAX_PICKS||!picks.dishes.every(x=>text(x,60)))throw new Error('Invalid week plan in backup.');
-  return {version:2,currency:CURRENCIES.includes(raw.currency)?raw.currency:'EUR',baseline:b?{monthly:b.monthly,orders:b.orders,since:b.since,groceries:b.groceries||0}:null,
+  // Older records have no habit: they switch to assume-home-cooked from the day they are first opened.
+  const hr=raw.habit&&typeof raw.habit==='object'?raw.habit:{mode:'assume',meals:3,from:b?today:'',groceriesWeekly:null,checked:''};
+  if(!['assume','log'].includes(hr.mode)||![1,2,3].includes(hr.meals)||!(hr.from===''||validDate(hr.from))||!(hr.groceriesWeekly===null||hr.groceriesWeekly===undefined||money(hr.groceriesWeekly))||!(hr.checked===''||hr.checked===undefined||validDate(hr.checked)))throw new Error('Invalid settings in backup.');
+  const habit={mode:hr.mode,meals:hr.meals,from:hr.from,groceriesWeekly:hr.groceriesWeekly??null,checked:hr.checked||''};
+  return {version:2,currency:CURRENCIES.includes(raw.currency)?raw.currency:'EUR',baseline:b?{monthly:b.monthly,orders:b.orders,since:b.since,groceries:b.groceries||0}:null,habit,
     events:raw.events.map(e=>e.type==='cooked'?{id:e.id,type:'cooked',date:e.date,dish:e.dish,meal:e.meal||'dinner',tempted:e.tempted===true,createdAt:e.createdAt}   // older meals become dinners
       :e.type==='groceries'?{id:e.id,type:'groceries',date:e.date,amount:e.amount,note:e.note||'',days:e.days,createdAt:e.createdAt}
       :{id:e.id,type:'ordered',date:e.date,amount:e.amount,note:e.note||'',planned:e.planned===true,createdAt:e.createdAt}),

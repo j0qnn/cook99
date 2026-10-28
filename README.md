@@ -3,7 +3,7 @@
 Your cooking book: an airy, minimal page of the dishes you actually cook. Cook at home, level Cooking from 1 to 99, and
 watch real money stay in your purse. No account, no server process, no dependencies; everything stays in the
 browser. `npm start` serves it on http://localhost:4175, `npm run share` on the local network for a phone,
-`npm run check` runs syntax checks and the 12 model tests.
+`npm run check` runs syntax checks and the 18 model tests.
 
 History: the pixel savings app (`../cook99-savings`) guessed the money; the clean app (`../archive/cook99-clean`)
 measured it. This version (2026-10-02) keeps the measured money and the data format and puts it in the cooking ## The page
@@ -53,6 +53,19 @@ the two big numbers, warm off-white (dark at night, following the system) and on
   shows the month, the total, weeks (with groceries and unplanned orders), months and entries.
 
 eal*.
+
+## Counting days
+
+The default is **assume home-cooked** (`habit.mode = 'assume'`): every finished day since `habit.from` counts its usual
+home meals (`habit.meals`, three by default: breakfast, lunch, dinner) unless you log a takeaway, which replaces dinner
+first, then lunch, then breakfast (`dayMeals`). Today counts once it is over. A dish you log fills its own slot and
+goes into your book; logging is optional. Groceries use a weekly estimate (`habit.groceriesWeekly`, or your usual
+grocery month when empty) for days no logged shop covers, and the money says "about" while it is partly estimated.
+On opening, a quiet card shows what happened **since your last visit** (levels, XP, home meals, money) and any
+levels gained while you were away play their level-up. Once a week an optional check-in asks whether there was a
+takeaway you have not logged. *Log meals* in Settings switches back to counting only what you log. Older records
+switch to assume-home-cooked from the day they are first opened; move the start earlier in Settings if you were
+cooking all along. The home page shows days in a row without an unplanned takeaway (planned treats keep the run).
 
 ## Pictures
 

@@ -118,3 +118,9 @@ input:focus,select:focus{outline:2px solid var(--ink);outline-offset:-1px}
 .meter{margin-top:18px}.track polygon,.track rect{fill:none;stroke:var(--muted);stroke-width:1;stroke-linejoin:round}
 .axis{display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--muted)}
 @media(prefers-reduced-motion:reduce){.chart-tip{animation:none}}
+
+/* Notices on the home page: the summary since your last visit, the weekly check-in. Quiet cards, one at a time. */
+.notice{margin-top:30px;padding:16px 18px;background:var(--surface);border:1px solid var(--line);border-radius:16px;animation:open .3s ease}
+.notice .caption{margin:0 0 6px}.notice-line{margin:0;font-size:16px;line-height:1.45}.notice .link{margin-top:10px}
+.notice-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.field-label{margin:18px 0 0;font-size:13px;color:var(--muted)}#mealsSeg{margin-top:6px}.small{font-size:14px}#modeHint{margin-top:10px}

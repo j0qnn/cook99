@@ -125,3 +125,48 @@ test('the month picture: a Monday-first grid with each day\u2019s meals in meal 
   assert.ok(m.days[25].isToday);assert.ok(m.days[26].ahead&&!m.days[24].ahead);
   assert.equal(monthDays(s,'2026-02','2026-10-26').rows,5);   // February 2026 starts on a Sunday, so it spills into a fifth row
 });
+
+import {setHabit,dayMeals,deliveryFreeDays,checkIn,checkInDue,groceriesFor,defaultHabit} from '../model.js';
+const assuming=(from='2026-10-20',over={})=>setHabit(setBaseline(initialState(),{monthly:'247',orders:11,since:'2026-10-01',groceries:'200'}),{mode:'assume',from,...over});
+test('assume home-cooked: every finished day since the start counts its usual meals; today waits until it is over',()=>{
+  const s=assuming();const sum=summary(s,'2026-10-23');   // 20, 21, 22 are finished; 23 is today
+  assert.equal(sum.cookedTotal,9);assert.equal(sum.assumedTotal,9);assert.equal(sum.xp,220+220+(50+70+100)*1.5);   // day 3 of the streak earns half again
+  assert.equal(dayMeals(s,'2026-10-23','2026-10-23').items.length,0);assert.equal(dayMeals(s,'2026-10-19','2026-10-23').items.length,0);
+  assert.equal(summary(setHabit(s,{mode:'log'}),'2026-10-23').xp,0);   // logging mode counts only what you log
+  assert.equal(summary(setHabit(s,{meals:2}),'2026-10-23').cookedTotal,6);assert.deepEqual(dayMeals(setHabit(s,{meals:1}),'2026-10-20','2026-10-23').items.map(i=>i.meal),['dinner']);
+});
+test('a takeaway replaces dinner, a logged dish fills its slot, and three a day still earn XP',()=>{
+  let s=assuming();s=logOrdered(s,{amount:'22',date:'2026-10-21'},{now:1,today:'2026-10-23'}).state;
+  assert.deepEqual(dayMeals(s,'2026-10-21','2026-10-23').items.map(i=>i.meal),['breakfast','lunch']);
+  s=logOrdered(s,{amount:'18',date:'2026-10-21'},{now:2,today:'2026-10-23'}).state;assert.deepEqual(dayMeals(s,'2026-10-21','2026-10-23').items.map(i=>i.meal),['breakfast']);
+  s=logCooked(s,{dish:'Dal',date:'2026-10-22',meal:'lunch'},{now:3,today:'2026-10-23'}).state;
+  const d22=dayMeals(s,'2026-10-22','2026-10-23').items;assert.deepEqual(d22.map(i=>[i.meal,i.assumed,i.dish]),[['breakfast',true,null],['lunch',false,'Dal'],['dinner',true,null]]);
+  s=logCooked(s,{dish:'Porridge',date:'2026-10-22',meal:'lunch'},{now:4,today:'2026-10-23'}).state;   // a fourth meal that day: in the book, no XP
+  const sum=summary(s,'2026-10-23'),on22=id=>id.startsWith('assumed:2026-10-22')||s.events.some(e=>e.id===id&&e.date==='2026-10-22');
+  assert.equal(dayMeals(s,'2026-10-22','2026-10-23').items.length,4);assert.equal([...sum.counted].filter(on22).length,3);
+});
+test('delivery-free days count finished days since the last unplanned takeaway; planned treats keep the run',()=>{
+  let s=assuming('2026-10-10');assert.equal(deliveryFreeDays(s,'2026-10-20'),10);
+  s=logOrdered(s,{amount:'25',date:'2026-10-15',planned:true},{now:1,today:'2026-10-20'}).state;assert.equal(deliveryFreeDays(s,'2026-10-20'),10);
+  s=logOrdered(s,{amount:'25',date:'2026-10-17'},{now:2,today:'2026-10-20'}).state;assert.equal(deliveryFreeDays(s,'2026-10-20'),2);assert.equal(deliveryFreeDays(s,'2026-10-17'),0);
+  assert.equal(summary(s,'2026-10-20').deliveryFree,2);
+});
+test('groceries: a weekly estimate for days no logged shop covers, the usual grocery month when no estimate is set',()=>{
+  let s=assuming('2026-10-01',{groceriesWeekly:'70'});
+  assert.equal(Math.round(groceriesFor(s,'2026-10-01','2026-10-14').estimated),14000);
+  s=logGroceries(s,{amount:'84',date:'2026-10-01',days:7},{now:1,today:'2026-10-14'}).state;
+  const g=groceriesFor(s,'2026-10-01','2026-10-14');assert.equal(Math.round(g.logged),8400);assert.equal(Math.round(g.estimated),7000);
+  const m=monthReport(s,'2026-10','2026-10-14');assert.equal(m.groceries,15400);assert.equal(m.groceriesEstimated,7000);
+  const plain=assuming('2026-10-01');assert.equal(Math.round(groceriesFor(plain,'2026-10-01','2026-10-07').estimated),Math.round(20000*12/52));   // cancels the usual month out
+  assert.equal(groceriesFor(setHabit(s,{mode:'log'}),'2026-10-08','2026-10-14').estimated,0);
+});
+test('the weekly check-in, habit settings, and older records switching over',()=>{
+  let s=assuming('2026-10-01');assert.ok(checkInDue(s,'2026-10-08'));assert.ok(!checkInDue(s,'2026-10-05'));
+  s=checkIn(s,'2026-10-08');assert.ok(!checkInDue(s,'2026-10-12'));assert.ok(checkInDue(s,'2026-10-15'));
+  assert.throws(()=>setHabit(s,{meals:4}));assert.throws(()=>setHabit(s,{mode:'guess'}));assert.equal(setHabit(s,{groceriesWeekly:''}).habit.groceriesWeekly,null);
+  assert.deepEqual(initialState().habit,defaultHabit());
+  const old=validateState({version:2,currency:'EUR',baseline:{monthly:24700,orders:11,since:'2026-09-01'},events:[],dishes:[],pantry:[],picks:{week:'',dishes:[]}},{today:'2026-10-28'});
+  assert.deepEqual(old.habit,{mode:'assume',meals:3,from:'2026-10-28',groceriesWeekly:null,checked:''});
+  const data=new Map(),storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};persist(s,storage);assert.deepEqual(load(storage),s);
+  assert.throws(()=>validateState({...s,habit:{...s.habit,meals:7}}));
+});
